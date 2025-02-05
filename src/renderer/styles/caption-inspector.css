@@ -1,0 +1,105 @@
+.caption-inspector {
+  padding: 16px;
+  color: #ffffff;
+  background: #2d2d2d;
+  border-radius: 4px;
+}
+
+.caption-inspector h3 {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.style-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.style-group label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+  color: #cccccc;
+}
+
+.style-group input[type="number"],
+.style-group select {
+  padding: 6px 8px;
+  background: #1e1e1e;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #ffffff;
+  font-size: 14px;
+  width: 100%;
+}
+
+.style-group input[type="number"] {
+  width: 80px;
+}
+
+.color-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.color-input input[type="color"] {
+  width: 40px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid #444;
+  border-radius: 4px;
+  background: #1e1e1e;
+  cursor: pointer;
+}
+
+.color-input span {
+  font-family: monospace;
+  font-size: 12px;
+  color: #888;
+}
+
+.preview-text {
+  margin: 16px 0;
+  padding: 16px;
+  background: #1e1e1e;
+  border-radius: 4px;
+  text-align: center;
+  min-height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.selection-info {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #444;
+  font-size: 12px;
+  color: #888;
+  text-align: center;
+}
+
+/* Input focus states */
+.style-group input:focus,
+.style-group select:focus {
+  outline: none;
+  border-color: #2196F3;
+}
+
+/* Disabled state */
+.style-group input:disabled,
+.style-group select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Hover states */
+.style-group input[type="color"]:hover,
+.style-group select:hover {
+  border-color: #666;
+}

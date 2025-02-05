@@ -1,0 +1,132 @@
+.aspect-ratio-control {
+  padding: var(--spacing-md);
+  background: var(--surface-color);
+  border-radius: 4px;
+}
+
+.aspect-ratio-select {
+  margin-bottom: var(--spacing-md);
+}
+
+.aspect-ratio-select label {
+  display: block;
+  font-size: var(--font-size-small);
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.aspect-ratio-select select {
+  width: 100%;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--surface-hover);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: var(--font-size-normal);
+  cursor: pointer;
+}
+
+.aspect-ratio-select select:hover {
+  background: var(--surface-active);
+}
+
+.custom-dimensions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+  padding: var(--spacing-sm);
+  background: var(--surface-hover);
+  border-radius: 4px;
+}
+
+.dimension-input {
+  display: flex;
+  flex-direction: column;
+}
+
+.dimension-input label {
+  font-size: var(--font-size-small);
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.dimension-input input {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: var(--font-size-normal);
+}
+
+.custom-dimensions button {
+  grid-column: span 2;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--primary-color);
+  border: none;
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: var(--font-size-normal);
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.custom-dimensions button:hover {
+  background: var(--primary-hover);
+}
+
+.social-presets {
+  margin-top: var(--spacing-lg);
+}
+
+.social-presets h4 {
+  font-size: var(--font-size-normal);
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-sm);
+}
+
+.preset-list {
+  display: grid;
+  gap: var(--spacing-xs);
+}
+
+.preset-button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: var(--spacing-sm);
+  background: var(--surface-hover);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: var(--font-size-normal);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.preset-button:hover {
+  background: var(--surface-active);
+  border-color: var(--primary-color);
+}
+
+.preset-name {
+  font-weight: 500;
+}
+
+.preset-dimensions {
+  color: var(--text-secondary);
+  font-size: var(--font-size-small);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .custom-dimensions {
+    grid-template-columns: 1fr;
+  }
+
+  .custom-dimensions button {
+    grid-column: 1;
+  }
+}

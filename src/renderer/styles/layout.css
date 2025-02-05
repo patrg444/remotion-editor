@@ -1,0 +1,104 @@
+/* App layout */
+.app {
+  display: grid;
+  grid-template-areas:
+    "header header header"
+    "media preview inspector"
+    "timeline timeline timeline";
+  grid-template-rows: auto 1fr auto;
+  grid-template-columns: 240px 1fr 300px;
+  height: 100vh;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  background: var(--surface-color);
+}
+
+.app-header {
+  grid-area: header;
+  padding: var(--spacing-sm);
+  background: var(--surface-hover);
+  border-radius: 4px;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.header-controls > * {
+  flex: 1;
+}
+
+.header-controls button {
+  flex: 0 0 auto;
+}
+
+.media-bin-container {
+  grid-area: media;
+  background: var(--surface-hover);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.preview-container {
+  grid-area: preview;
+  background: #000;
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.preview-content {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.preview-container canvas {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.inspector-container {
+  grid-area: inspector;
+  background: var(--surface-hover);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.timeline-container {
+  grid-area: timeline;
+  background: var(--surface-hover);
+  border-radius: 4px;
+  overflow: hidden;
+  min-height: 200px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+  .app {
+    grid-template-areas:
+      "header header"
+      "preview inspector"
+      "media media"
+      "timeline timeline";
+    grid-template-rows: auto 1fr auto auto;
+    grid-template-columns: 1fr 300px;
+  }
+}
+
+@media (max-width: 768px) {
+  .app {
+    grid-template-areas:
+      "header"
+      "preview"
+      "inspector"
+      "media"
+      "timeline";
+    grid-template-rows: auto 1fr auto auto auto;
+    grid-template-columns: 1fr;
+  }
+}

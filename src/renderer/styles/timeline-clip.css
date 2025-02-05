@@ -1,0 +1,129 @@
+.timeline-clip {
+  position: absolute;
+  height: 45px;
+  background: var(--clip-bg);
+  border: 1px solid var(--clip-border);
+  border-radius: 4px;
+  overflow: hidden;
+  transition: box-shadow 0.2s ease, transform 0.1s ease;
+}
+
+.timeline-clip:focus {
+  outline: none;
+}
+
+.timeline-clip:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+  z-index: 2;
+}
+
+.timeline-clip.selected {
+  border-color: var(--clip-selected-border);
+  background: var(--clip-selected-bg);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.timeline-clip.keyboard-dragging {
+  border-color: var(--clip-dragging-border);
+  background: var(--clip-dragging-bg);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  transform: scale(1.02);
+  z-index: 3;
+}
+
+.timeline-clip.keyboard-dragging::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  border: 2px dashed var(--clip-dragging-border);
+  border-radius: 6px;
+  animation: dash 1s linear infinite;
+  pointer-events: none;
+}
+
+.timeline-clip .clip-header {
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.2);
+  font-size: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.timeline-clip .clip-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-clip .clip-duration {
+  margin-left: 8px;
+  opacity: 0.7;
+}
+
+.timeline-clip .clip-content {
+  height: calc(100% - 24px);
+  padding: 4px;
+}
+
+/* Clip type specific styles */
+.timeline-clip.video {
+  background: var(--video-clip-bg);
+}
+
+.timeline-clip.audio {
+  background: var(--audio-clip-bg);
+}
+
+.timeline-clip.caption {
+  background: var(--caption-clip-bg);
+}
+
+/* Animation keyframes */
+@keyframes dash {
+  from {
+    stroke-dashoffset: 10;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Theme variables */
+:root {
+  --clip-bg: #4a4a4a;
+  --clip-border: #666;
+  --clip-selected-bg: #5a5a5a;
+  --clip-selected-border: #999;
+  --clip-dragging-bg: #6a6a6a;
+  --clip-dragging-border: #0078d4;
+  --video-clip-bg: #4a5a6a;
+  --audio-clip-bg: #5a4a6a;
+  --caption-clip-bg: #6a5a4a;
+  --focus-ring: #0078d4;
+}
+
+/* High contrast theme */
+@media (forced-colors: active) {
+  :root {
+    --clip-bg: ButtonFace;
+    --clip-border: ButtonText;
+    --clip-selected-bg: Highlight;
+    --clip-selected-border: HighlightText;
+    --clip-dragging-bg: ActiveCaption;
+    --clip-dragging-border: ActiveBorder;
+    --video-clip-bg: ButtonFace;
+    --audio-clip-bg: ButtonFace;
+    --caption-clip-bg: ButtonFace;
+    --focus-ring: Highlight;
+  }
+
+  .timeline-clip.keyboard-dragging::before {
+    border-color: SelectedItemText;
+  }
+}

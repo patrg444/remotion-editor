@@ -1,0 +1,68 @@
+.inspector {
+  width: 300px;
+  height: 100%;
+  border-left: 1px solid #444;
+  background: #2a2a2a;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+}
+
+.inspector-header {
+  padding: 12px;
+  border-bottom: 1px solid #444;
+}
+
+.inspector-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.inspector-tab {
+  padding: 8px 16px;
+  background: transparent;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.inspector-tab:hover {
+  background: #3a3a3a;
+}
+
+.inspector-tab.active {
+  background: #444;
+}
+
+.inspector-content {
+  flex: 1;
+  overflow: visible;
+  position: relative;
+}
+
+.inspector-section {
+  padding: 16px;
+}
+
+.inspector-section-header {
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 16px;
+}
+
+.property-group {
+  margin-bottom: 12px;
+}
+
+.property-group label {
+  display: block;
+  font-size: 12px;
+  color: #999;
+  margin-bottom: 4px;
+}
+
+.property-group div {
+  font-size: 13px;
+}

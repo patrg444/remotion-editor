@@ -1,0 +1,68 @@
+{
+  "stripePublicKey": "pk_test_sample",
+  "stripeSecretKey": "sk_test_sample",
+  "webhookSecret": "whsec_sample",
+  "prices": {
+    "monthly": "price_monthly_sample",
+    "yearly": "price_yearly_sample"
+  },
+  "plans": {
+    "basic": {
+      "id": "basic",
+      "name": "Basic",
+      "features": [
+        "Basic video editing",
+        "720p export",
+        "2 video tracks",
+        "2 audio tracks"
+      ],
+      "price": {
+        "monthly": 9.99,
+        "yearly": 99.99
+      }
+    },
+    "pro": {
+      "id": "pro",
+      "name": "Professional",
+      "features": [
+        "Advanced video editing",
+        "4K export",
+        "Unlimited video tracks",
+        "Unlimited audio tracks",
+        "Motion graphics",
+        "Color grading",
+        "Audio effects"
+      ],
+      "price": {
+        "monthly": 19.99,
+        "yearly": 199.99
+      }
+    },
+    "enterprise": {
+      "id": "enterprise",
+      "name": "Enterprise",
+      "features": [
+        "All Pro features",
+        "8K export",
+        "Team collaboration",
+        "Custom branding",
+        "Priority support",
+        "API access",
+        "Custom integrations"
+      ],
+      "price": {
+        "monthly": 49.99,
+        "yearly": 499.99
+      }
+    }
+  },
+  "trial": {
+    "duration": 14,
+    "features": [
+      "Basic video editing",
+      "720p export",
+      "2 video tracks",
+      "2 audio tracks"
+    ]
+  }
+}

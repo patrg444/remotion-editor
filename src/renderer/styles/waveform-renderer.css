@@ -1,0 +1,207 @@
+.waveform-renderer {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.waveform-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: transparent;
+  transition: opacity 0.2s ease-out;
+}
+
+.waveform-canvas.selected {
+  outline: 2px solid #007bff;
+  outline-offset: -2px;
+}
+
+/* Volume slider */
+.volume-slider {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 20px;
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 2px;
+  cursor: ns-resize;
+  opacity: 0;
+  transition: opacity 0.2s ease-out;
+}
+
+.waveform-renderer:hover .volume-slider {
+  opacity: 1;
+}
+
+.volume-level {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background-color: #4CAF50;
+  border-radius: 2px;
+  transition: height 0.1s ease-out;
+}
+
+/* Fade handles */
+.fade-handle {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  background-color: #fff;
+  border: 2px solid #4CAF50;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  cursor: ew-resize;
+  opacity: 0;
+  transition: opacity 0.2s ease-out, transform 0.1s ease-out;
+  z-index: 1;
+}
+
+.waveform-renderer:hover .fade-handle {
+  opacity: 1;
+}
+
+.fade-handle:hover {
+  transform: translate(-50%, -50%) scale(1.2);
+}
+
+.fade-handle:active {
+  transform: translate(-50%, -50%) scale(0.9);
+}
+
+.fade-handle.fade-in {
+  left: 0;
+}
+
+.fade-handle.fade-out {
+  right: 0;
+}
+
+/* Fade visualizations */
+.fade-overlay {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: linear-gradient(to right, rgba(76, 175, 80, 0.2), transparent);
+  pointer-events: none;
+}
+
+.fade-overlay.fade-in {
+  left: 0;
+}
+
+.fade-overlay.fade-out {
+  right: 0;
+  transform: scaleX(-1);
+}
+
+/* Performance optimizations */
+.waveform-canvas {
+  will-change: transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+  .waveform-canvas.selected {
+    outline-color: #fff;
+  }
+
+  .fade-handle {
+    border-color: #fff;
+    background-color: #000;
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .waveform-canvas,
+  .volume-slider,
+  .fade-handle,
+  .volume-level {
+    transition: none;
+  }
+}
+
+/* Touch device optimizations */
+@media (hover: none) {
+  .volume-slider,
+  .fade-handle {
+    opacity: 1;
+  }
+
+  .fade-handle {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+/* Loading state */
+.waveform-renderer.loading .waveform-canvas {
+  opacity: 0.5;
+}
+
+.waveform-renderer.loading::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(76, 175, 80, 0.2);
+  border-top-color: #4CAF50;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+/* Error state */
+.waveform-renderer.error .waveform-canvas {
+  opacity: 0.3;
+}
+
+.waveform-renderer.error::after {
+  content: '⚠️';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 20px;
+}
+
+/* Tooltips */
+.fade-handle[title]:hover::after {
+  content: attr(title);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  background-color: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  font-size: 12px;
+  white-space: nowrap;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+/* Print styles */
+@media print {
+  .volume-slider,
+  .fade-handle {
+    display: none;
+  }
+}

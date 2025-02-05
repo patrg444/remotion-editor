@@ -1,0 +1,17 @@
+.selection-box {
+  position: absolute;
+  border: 1px solid #2196F3;
+  background: rgba(33, 150, 243, 0.1);
+  pointer-events: none;
+  z-index: 1000;
+}
+
+.caption-item.selected {
+  background: rgba(33, 150, 243, 0.2);
+  border: 1px solid #2196F3;
+}
+
+/* Add transition for smooth selection visual feedback */
+.caption-item {
+  transition: background-color 0.1s ease, border-color 0.1s ease;
+}

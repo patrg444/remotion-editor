@@ -1,0 +1,145 @@
+.gpu-monitor {
+  background-color: var(--surface-color);
+  border-radius: 8px;
+  padding: 16px;
+  margin: 16px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.gpu-monitor-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.gpu-monitor-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-color);
+}
+
+.gpu-badge {
+  margin-left: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-color);
+  background-color: var(--primary-color);
+  border-radius: 4px;
+  opacity: 0.8;
+}
+
+.gpu-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.gpu-stat {
+  display: flex;
+  flex-direction: column;
+}
+
+.gpu-stat label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.gpu-stat span {
+  font-size: 14px;
+  color: var(--text-color);
+}
+
+.gpu-memory {
+  margin-top: 16px;
+}
+
+.gpu-memory label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+  display: block;
+}
+
+.progress-bar {
+  height: 8px;
+  background-color: var(--background-color);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-bar .progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background-color: var(--primary-color);
+  transition: width 0.3s ease;
+}
+
+.progress-bar span {
+  position: absolute;
+  right: 8px;
+  top: -18px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* Color indicators for different usage levels */
+.progress-bar .progress-fill.low {
+  background-color: var(--success-color);
+}
+
+.progress-bar .progress-fill.medium {
+  background-color: var(--warning-color);
+}
+
+.progress-bar .progress-fill.high {
+  background-color: var(--error-color);
+}
+
+/* Animations */
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.7; }
+  100% { opacity: 1; }
+}
+
+.gpu-monitor.active .gpu-badge {
+  animation: pulse 2s infinite;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .gpu-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .gpu-monitor {
+    margin: 8px;
+    padding: 12px;
+  }
+}
+
+/* Dark theme adjustments */
+[data-theme="dark"] .gpu-monitor {
+  background-color: rgba(255, 255, 255, 0.05);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="dark"] .progress-bar {
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+/* High contrast theme adjustments */
+[data-theme="high-contrast"] .gpu-badge {
+  border: 1px solid var(--text-color);
+}
+
+[data-theme="high-contrast"] .progress-bar {
+  border: 1px solid var(--text-color);
+}

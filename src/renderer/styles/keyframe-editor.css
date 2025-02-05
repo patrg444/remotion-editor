@@ -1,0 +1,429 @@
+@import './variables.css';
+@import './keyframes.css';
+
+/* ======================
+   Base Layout
+   ====================== */
+.keyframe-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  padding: var(--spacing-lg);
+  background: var(--surface-1);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-md);
+  transition: all var(--animation-duration) var(--animation-easing);
+}
+
+/* ======================
+   Controls Layout
+   ====================== */
+.keyframe-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+/* ======================
+   Interpolation Buttons
+   ====================== */
+.interpolation-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-md);
+  justify-content: flex-start;
+}
+
+.interpolation-button {
+  padding: var(--spacing-md) var(--spacing-lg);
+  border: none;
+  border-radius: var(--border-radius-md);
+  background: var(--surface-2);
+  color: var(--text-1);
+  cursor: pointer;
+  transition: all var(--animation-duration) var(--animation-easing);
+  font-size: var(--font-size-md);
+  min-width: var(--min-button-width-md);
+  position: relative;
+  font-family: var(--font-family-base);
+  line-height: var(--line-height-normal);
+}
+
+.interpolation-button:hover:not(:disabled) {
+  background: var(--surface-3);
+  transform: scale(var(--scale-hover));
+}
+
+.interpolation-button:active:not(:disabled) {
+  transform: scale(var(--scale-active));
+}
+
+.interpolation-button.active {
+  background: var(--primary);
+  color: var(--surface-1);
+}
+
+.interpolation-button:disabled {
+  opacity: var(--opacity-dim);
+  cursor: not-allowed;
+}
+
+/* Button icons */
+.interpolation-button::before {
+  content: '';
+  display: block;
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+  margin: 0 auto var(--spacing-xs);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  transition: filter var(--animation-duration) var(--animation-easing);
+}
+
+/* SVG icons for each interpolation type */
+.interpolation-button.linear::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2 14L14 2' stroke='currentColor' stroke-width='2'/%3E%3C/svg%3E");
+}
+
+.interpolation-button.bezier::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2 14C2 8 14 8 14 2' stroke='currentColor' stroke-width='2' fill='none'/%3E%3C/svg%3E");
+}
+
+.interpolation-button.step::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2 14H8V8H14V2' stroke='currentColor' stroke-width='2' fill='none'/%3E%3C/svg%3E");
+}
+
+.interpolation-button.ease-in::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2 14C2 14 2 2 14 2' stroke='currentColor' stroke-width='2' fill='none'/%3E%3C/svg%3E");
+}
+
+.interpolation-button.ease-out::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2 14C14 14 14 2 14 2' stroke='currentColor' stroke-width='2' fill='none'/%3E%3C/svg%3E");
+}
+
+.interpolation-button.ease-in-out::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2 14C2 8 14 8 14 2' stroke='currentColor' stroke-width='2' fill='none'/%3E%3C/svg%3E");
+}
+
+/* ======================
+   Value Editor
+   ====================== */
+.keyframe-value-editor {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.keyframe-value-editor label {
+  font-size: var(--font-size-md);
+  color: var(--text-2);
+  min-width: var(--min-button-width-sm);
+  font-family: var(--font-family-base);
+}
+
+.keyframe-value-editor input {
+  width: var(--min-button-width-md);
+  padding: var(--spacing-xs) var(--spacing-md);
+  border: 1px solid var(--surface-3);
+  border-radius: var(--border-radius-md);
+  background: var(--surface-2);
+  color: var(--text-1);
+  font-size: var(--font-size-md);
+  font-family: var(--font-family-mono);
+  transition: all var(--animation-duration) var(--animation-easing);
+}
+
+.keyframe-value-editor input:hover {
+  border-color: var(--surface-4);
+}
+
+.keyframe-value-editor input[aria-invalid="true"] {
+  border-color: var(--error);
+  background-color: var(--error-transparent);
+}
+
+/* ======================
+   Keyboard Shortcuts Help
+   ====================== */
+.keyboard-shortcuts-help {
+  margin-top: var(--spacing-lg);
+  padding: var(--spacing-lg);
+  background: var(--surface-2);
+  border-radius: var(--border-radius-md);
+  font-size: var(--font-size-md);
+  color: var(--text-2);
+  transition: all var(--animation-duration) var(--animation-easing);
+}
+
+.keyboard-shortcuts-help p {
+  margin: 0 0 var(--spacing-md);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-1);
+}
+
+.keyboard-shortcuts-help ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--spacing-md);
+}
+
+.keyboard-shortcuts-help li {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.keyboard-shortcuts-help kbd {
+  display: inline-block;
+  padding: var(--spacing-xxs) var(--spacing-sm);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  line-height: var(--line-height-tight);
+  color: var(--text-1);
+  background: var(--surface-3);
+  border: 1px solid var(--surface-4);
+  border-radius: var(--border-radius-sm);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--animation-duration) var(--animation-easing);
+}
+
+/* ======================
+   Focus & Keyboard Navigation
+   ====================== */
+.interpolation-button:focus-visible {
+  outline: var(--focus-outline-width) solid var(--primary);
+  outline-offset: var(--focus-outline-offset);
+  box-shadow: 0 0 0 var(--focus-ring-width) var(--surface-1), 
+              0 0 0 var(--focus-ring-gap) var(--primary);
+}
+
+.keyframe-value-editor input:focus-visible {
+  outline: var(--focus-outline-width) solid var(--primary);
+  outline-offset: var(--focus-outline-offset);
+  box-shadow: 0 0 0 var(--focus-ring-width) var(--surface-1), 
+              0 0 0 var(--focus-ring-gap) var(--primary);
+  border-color: var(--primary);
+}
+
+/* Remove default focus styles when using mouse */
+.interpolation-button:focus:not(:focus-visible),
+.keyframe-value-editor input:focus:not(:focus-visible) {
+  outline: none;
+  box-shadow: none;
+}
+
+/* ======================
+   Tooltips
+   ====================== */
+.keyframe-tooltip {
+  position: absolute;
+  transform: translateX(-50%);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--surface-2);
+  color: var(--text-1);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  pointer-events: none;
+  z-index: var(--z-index-tooltip);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--animation-duration) var(--animation-easing);
+  white-space: nowrap;
+}
+
+/* ======================
+   Modal
+   ====================== */
+.bezier-editor-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--surface-transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-index-modal);
+  animation: overlay-fade-in var(--animation-duration) var(--animation-easing);
+}
+
+.bezier-editor-container {
+  background: var(--surface-1);
+  padding: var(--spacing-lg);
+  border-radius: var(--border-radius-lg);
+  max-width: 90vw;
+  max-height: 90vh;
+  overflow: auto;
+  position: relative;
+  box-shadow: var(--shadow-lg);
+  animation: modal-slide-in var(--animation-duration) var(--animation-easing);
+}
+
+.close-bezier-editor {
+  margin-top: var(--spacing-lg);
+  padding: var(--spacing-md) var(--spacing-lg);
+  border: none;
+  border-radius: var(--border-radius-md);
+  background: var(--surface-2);
+  color: var(--text-1);
+  cursor: pointer;
+  font-size: var(--font-size-md);
+  transition: all var(--animation-duration) var(--animation-easing);
+}
+
+.close-bezier-editor:hover {
+  background: var(--surface-3);
+  transform: scale(var(--scale-hover));
+}
+
+.close-bezier-editor:active {
+  transform: scale(var(--scale-active));
+}
+
+/* ======================
+   Dark Mode
+   ====================== */
+@media (prefers-color-scheme: dark) {
+  .keyframe-editor {
+    box-shadow: var(--shadow-lg);
+  }
+
+  .interpolation-button::before {
+    filter: brightness(1.2);
+  }
+
+  .keyframe-value-editor input {
+    background: var(--surface-3);
+    border-color: var(--surface-4);
+  }
+
+  .keyboard-shortcuts-help kbd {
+    background: var(--surface-4);
+    border-color: var(--text-3);
+  }
+}
+
+/* ======================
+   High Contrast Mode
+   ====================== */
+@media (forced-colors: active) {
+  .keyframe-editor,
+  .interpolation-button,
+  .keyframe-value-editor input,
+  .keyboard-shortcuts-help,
+  .keyboard-shortcuts-help kbd,
+  .bezier-editor-container {
+    border: 1px solid CanvasText;
+  }
+
+  .interpolation-button.active {
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  .keyframe-value-editor input[aria-invalid="true"] {
+    border: 2px solid Mark;
+  }
+
+  .keyframe-tooltip {
+    border: 1px solid CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  .bezier-editor-overlay {
+    background: Canvas;
+  }
+}
+
+/* ======================
+   Reduced Motion
+   ====================== */
+@media (prefers-reduced-motion: reduce) {
+  .keyframe-editor,
+  .interpolation-button,
+  .keyframe-value-editor input,
+  .keyboard-shortcuts-help,
+  .keyboard-shortcuts-help kbd,
+  .keyframe-tooltip,
+  .bezier-editor-overlay,
+  .bezier-editor-container {
+    transition: none;
+    animation: none;
+  }
+
+  .interpolation-button:hover:not(:disabled),
+  .interpolation-button:active:not(:disabled),
+  .close-bezier-editor:hover,
+  .close-bezier-editor:active {
+    transform: none;
+  }
+}
+
+/* ======================
+   Print Styles
+   ====================== */
+@media print {
+  .keyframe-editor {
+    box-shadow: none;
+    border: 1px solid black;
+    break-inside: avoid;
+  }
+
+  .interpolation-button {
+    border: 1px solid black;
+    background: white;
+    color: black;
+  }
+
+  .interpolation-button.active {
+    background: black;
+    color: white;
+  }
+
+  .keyframe-value-editor input {
+    border: 1px solid black;
+    background: white;
+  }
+
+  .keyboard-shortcuts-help {
+    display: none;
+  }
+
+  .bezier-editor-overlay,
+  .keyframe-tooltip {
+    display: none;
+  }
+}
+
+/* ======================
+   Responsive Adjustments
+   ====================== */
+@media (max-width: var(--breakpoint-md)) {
+  .interpolation-buttons {
+    justify-content: center;
+  }
+
+  .interpolation-button {
+    padding: var(--spacing-xs) var(--spacing-md);
+    min-width: var(--min-button-width-sm);
+    font-size: var(--font-size-sm);
+  }
+
+  .keyframe-value-editor {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .keyframe-value-editor input {
+    width: 100%;
+  }
+
+  .keyboard-shortcuts-help ul {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  }
+}

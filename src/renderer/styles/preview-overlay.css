@@ -1,0 +1,111 @@
+.preview-overlay {
+  pointer-events: all;
+  user-select: none;
+  box-sizing: border-box;
+}
+
+.preview-overlay::before {
+  content: '';
+  position: absolute;
+  top: -10px;
+  left: -10px;
+  right: -10px;
+  bottom: -10px;
+  border: 1px solid rgba(0, 160, 255, 0.3);
+  border-radius: 6px;
+  pointer-events: none;
+}
+
+.resize-handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border: 2px solid #00a0ff;
+  border-radius: 50%;
+}
+
+.resize-handle.top-left {
+  top: -6px;
+  left: -6px;
+  cursor: nw-resize;
+}
+
+.resize-handle.top-right {
+  top: -6px;
+  right: -6px;
+  cursor: ne-resize;
+}
+
+.resize-handle.bottom-left {
+  bottom: -6px;
+  left: -6px;
+  cursor: sw-resize;
+}
+
+.resize-handle.bottom-right {
+  bottom: -6px;
+  right: -6px;
+  cursor: se-resize;
+}
+
+.rotation-handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border: 2px solid #00a0ff;
+  border-radius: 50%;
+  top: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: grab;
+}
+
+.rotation-handle::before {
+  content: '';
+  position: absolute;
+  width: 2px;
+  height: 16px;
+  background: #00a0ff;
+  left: 50%;
+  bottom: 100%;
+  transform: translateX(-50%);
+}
+
+/* Handle states */
+.resize-handle:hover,
+.rotation-handle:hover {
+  background: #00a0ff;
+  border-color: #fff;
+}
+
+.preview-overlay.resizing,
+.preview-overlay.rotating {
+  pointer-events: none;
+}
+
+.preview-overlay.resizing .resize-handle,
+.preview-overlay.rotating .rotation-handle {
+  background: #00a0ff;
+  border-color: #fff;
+}
+
+/* Guidelines for snapping */
+.preview-guideline {
+  position: absolute;
+  background: rgba(0, 160, 255, 0.5);
+  pointer-events: none;
+}
+
+.preview-guideline.horizontal {
+  height: 1px;
+  left: 0;
+  right: 0;
+}
+
+.preview-guideline.vertical {
+  width: 1px;
+  top: 0;
+  bottom: 0;
+}

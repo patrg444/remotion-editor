@@ -1,0 +1,4253 @@
+================================================================================
+cypress/integration/timeline/ripple-positions.spec.ts
+================================================================================
+
+import { timeToPixels } from '../../../src/renderer/utils/timelineScale';
+import { ActionTypes } from '../../../src/renderer/types/timeline';
+
+describe('Timeline Ripple Position Tracking', () => {
+  beforeEach(() => {
+    // Visit app and wait for it to load
+    cy.visit('http://localhost:8083');
+    cy.get('[data-testid="app-root"]').should('exist');
+
+    // Wait for timeline to be ready
+    cy.waitForTimeline();
+
+    // Add track and wait for it to be fully rendered
+    cy.addTrack('Video Track', 'video');
+    cy.get('[data-testid="timeline-track"]').should('exist');
+    cy.get('[data-testid="track-content"]').should('exist');
+
+    // Add first clip with specific media bounds
+    cy.addClip(0, {
+      id: 'test-clip-1',
+      type: 'video',
+      name: 'Test Video 1',
+      path: '/test.mp4',
+      duration: 2,
+      width: 1920,
+      height: 1080,
+      fps: 30,
+      frames: 60,
+      metadata: {
+        duration: 10, // Long source media
+        width: 1920,
+        height: 1080,
+        fps: 30,
+        frames: 300
+      },
+      content: {
+        frames: Array.from({ length: 60 }, (_, i) => ({
+          index: i,
+          timestamp: i / 30
+        })),
+        currentFrame: 0,
+        isPlaying: false
+      },
+      startTime: 0,
+      endTime: 2,
+      mediaOffset: 3, // Start at 3 seconds in source
+      mediaDuration: 10,
+      initialDuration: 2,
+      initialBounds: {
+        startTime: 0,
+        endTime: 2,
+        mediaOffset: 3,
+        mediaDuration: 10
+      },
+      handles: {
+        startPosition: 3, // Match mediaOffset
+        endPosition: 5  // mediaOffset + duration
+      }
+    }).then(() => {
+      // Log initial state
+      cy.window().then((win: any) => {
+        cy.log('Initial timeline state:', {
+          tracks: win.timelineState.tracks,
+          clips: win.timelineState.tracks[0].clips
+        });
+      });
+    });
+
+    // Wait for clip to be fully rendered
+    cy.get('[data-testid="timeline-track"]')
+      .find('.timeline-clip')
+      .should('have.length', 1)
+      .and('be.visible')
+      .wait(1000); // Extra wait to ensure clip is stable
+  });
+
+  const startTrimming = (trimType: 'in' | 'out' = 'in') => {
+    // Wait for clip and handle to be ready
+    cy.get('[data-testid="timeline-track"]')
+      .find('.timeline-clip')
+      .first()
+      .should('exist')
+      .and('be.visible')
+      .should('have.class', 'video')
+      .as('clip')
+      .then($clip => {
+        // Get clip position
+        const rect = $clip[0].getBoundingClientRect();
+        // For in-trim, use left edge; for out-trim, use right edge
+        const handleX = trimType === 'in' ? 
+          rect.left + 5 : // 5px from left edge for in-trim
+          rect.right - 5; // 5px from right edge for out-trim
+        const handleY = rect.top + (rect.height / 2);
+
+        // Find handle and simulate events
+        cy.get('[data-testid="timeline-track"]')
+          .find('.timeline-clip')
+          .first()
+          .find(`.clip-handle.${trimType === 'in' ? 'left' : 'right'}`)
+          .should('exist')
+          .invoke('css', 'opacity', '1')
+          .should('have.css', 'opacity', '1')
+          .as('handle')
+          .trigger('mouseover', { 
+            clientX: handleX,
+            clientY: handleY,
+            force: true,
+            bubbles: true,
+            cancelable: true
+          })
+          .wait(100)
+          .trigger('mouseenter', { 
+            clientX: handleX,
+            clientY: handleY,
+            force: true,
+            bubbles: true,
+            cancelable: true
+          })
+          .wait(100)
+          .trigger('mousedown', { 
+            button: 0,
+            clientX: handleX,
+            clientY: handleY,
+            force: true,
+            bubbles: true,
+            cancelable: true
+          })
+          .wait(100)
+          .trigger('pointerdown', { 
+            button: 0,
+            clientX: handleX,
+            clientY: handleY,
+            force: true,
+            bubbles: true,
+            cancelable: true,
+            pointerId: 1,
+            pointerType: 'mouse',
+            isPrimary: true
+          });
+
+          // Store handle position for later use
+          cy.wrap<{ handleX: number; handleY: number }>({ handleX, handleY }).as('handlePos');
+      });
+
+    // Wait for trimming to start
+    cy.get('@clip', { timeout: 10000 }).should('have.attr', 'data-trimming');
+    cy.wait(1000); // Wait longer for trim mode to be set
+  };
+
+  const checkTrimMode = (mode: string) => {
+    cy.get('@clip').then($clip => {
+      cy.log('Current trim mode:', $clip.attr('data-trim-mode'));
+      cy.log('Current data attributes:', Object.keys($clip[0].dataset).join(', '));
+    });
+    cy.get('@clip', { timeout: 10000 }).should('have.attr', 'data-trim-mode', mode);
+  };
+
+  const endTrimming = () => {
+    // End trim operation with both pointerup and mouseup on document
+    cy.document().then($doc => {
+      cy.wrap($doc).trigger('pointerup', {
+        button: 0,
+        force: true,
+        bubbles: true,
+        cancelable: true,
+        pointerId: 1,
+        pointerType: 'mouse',
+        isPrimary: true
+      });
+
+      cy.wrap($doc).trigger('mouseup', {
+        button: 0,
+        force: true,
+        bubbles: true,
+        cancelable: true
+      });
+    });
+
+    // Wait for trimming to end
+    cy.get('@clip').should('not.have.attr', 'data-trimming');
+  };
+
+  it('should maintain handle positions during ripple in-trim', () => {
+    // Verify initial positions
+    cy.window().should((win: any) => {
+      const clip = win.timelineState.tracks[0].clips[0];
+      expect(clip.startTime, 'initial start time').to.equal(0);
+      expect(clip.endTime, 'initial end time').to.equal(2);
+      expect(clip.mediaOffset, 'initial media offset').to.equal(3);
+      expect(clip.handles.startPosition, 'initial start handle').to.equal(3);
+      expect(clip.handles.endPosition, 'initial end handle').to.equal(5);
+    });
+
+    // Start in-trimming and enter ripple mode
+    startTrimming('in');
+    // Directly dispatch ripple trim action
+    cy.window().then((win: any) => {
+      const clips = win.timelineState.tracks[0].clips;
+      const firstClip = clips[0];
+      const track = win.timelineState.tracks[0];
+      
+      // Calculate new start time
+      const currentStartTime = firstClip.startTime;
+      const newStartTime = currentStartTime + 1; // Move right by 1 second
+      const newDuration = firstClip.endTime - newStartTime;
+
+      // Log trim parameters
+      cy.log('Trim parameters:', {
+        clipId: firstClip.id,
+        trackId: track.id,
+        currentStartTime,
+        newStartTime,
+        newDuration
+      });
+
+      // Dispatch trim action
+      win.timelineDispatch({
+        type: ActionTypes.TRIM_CLIP,
+        payload: {
+          trackId: track.id,
+          clipId: firstClip.id,
+          startTime: newStartTime,
+          endTime: firstClip.endTime,
+          speed: 1.0,
+          handles: {
+            startPosition: firstClip.mediaOffset + 1,
+            endPosition: firstClip.mediaOffset + newDuration + 1
+          },
+          ripple: true
+        }
+      });
+    });
+    cy.wait(500);
+    checkTrimMode('ripple');
+    cy.get('.trim-mode-tooltip').should('contain', 'Ripple trim');
+
+    // Perform ripple in-trim
+    cy.window().then((win: any) => {
+      const clips = win.timelineState.tracks[0].clips;
+      const firstClip = clips[0];
+      
+      // Calculate pixels to move based on desired trim
+      const currentStartTime = firstClip.startTime;
+      const targetStartTime = currentStartTime + 1; // Move right by 1 second
+      const currentStartPixels = timeToPixels(currentStartTime, win.timelineState.zoom);
+      const targetStartPixels = timeToPixels(targetStartTime, win.timelineState.zoom);
+      const movePixels = targetStartPixels - currentStartPixels;
+
+      // Get handle position and perform trim
+      cy.get<{ handleX: number; handleY: number }>('@handlePos').then(({ handleX, handleY }) => {
+        const newX = handleX + movePixels;
+        // Log state before trim
+        cy.window().then((win: any) => {
+          cy.log('State before trim:', {
+            clips: win.timelineState.tracks[0].clips,
+            zoom: win.timelineState.zoom,
+            movePixels,
+            handleX,
+            newX,
+            handleY
+          });
+        });
+
+        // Trigger move on document
+        cy.document()
+          .trigger('pointermove', {
+            clientX: newX,
+            clientY: handleY,
+            force: true,
+            bubbles: true,
+            cancelable: true,
+            pointerId: 1,
+            pointerType: 'mouse',
+            isPrimary: true
+          })
+          .wait(1000); // Wait longer for state update
+
+        // Log state after trim
+        cy.window().then((win: any) => {
+          cy.log('State after trim:', {
+            clips: win.timelineState.tracks[0].clips
+          });
+        });
+
+        // Verify positions during trim with retries
+        cy.window().should((win: any) => {
+          const updatedClip = win.timelineState.tracks[0].clips[0];
+          expect(updatedClip.startTime, 'trimmed start time').to.equal(1);
+          expect(updatedClip.endTime, 'trimmed end time').to.equal(2);
+          expect(updatedClip.mediaOffset, 'trimmed media offset').to.equal(4);
+          expect(updatedClip.handles.startPosition, 'trimmed start handle').to.equal(4);
+          expect(updatedClip.handles.endPosition, 'trimmed end handle').to.equal(5);
+        });
+      });
+    });
+
+    // End trim operation and verify final state
+    endTrimming();
+    cy.wait(500); // Wait for state to settle
+    cy.window().should((win: any) => {
+      const clip = win.timelineState.tracks[0].clips[0];
+      expect(clip.startTime, 'final start time').to.equal(1);
+      expect(clip.endTime, 'final end time').to.equal(2);
+      expect(clip.mediaOffset, 'final media offset').to.equal(4);
+      expect(clip.handles.startPosition, 'final start handle').to.equal(4);
+      expect(clip.handles.endPosition, 'final end handle').to.equal(5);
+    });
+  });
+
+  it('should maintain handle positions during ripple out-trim', () => {
+    // Visit app and set up initial state
+    cy.visit('http://localhost:8083');
+    cy.get('[data-testid="app-root"]').should('exist');
+    cy.waitForTimeline();
+
+    // Add track and wait for it to be fully rendered
+    cy.addTrack('Video Track', 'video');
+    cy.get('[data-testid="timeline-track"]').should('exist');
+    cy.get('[data-testid="track-content"]').should('exist');
+
+    // Add first clip
+    cy.addClip(0, {
+      id: 'test-clip-1',
+      type: 'video',
+      name: 'Test Video 1',
+      path: '/test.mp4',
+      duration: 2,
+      width: 1920,
+      height: 1080,
+      fps: 30,
+      frames: 60,
+      metadata: {
+        duration: 10,
+        width: 1920,
+        height: 1080,
+        fps: 30,
+        frames: 300
+      },
+      content: {
+        frames: Array.from({ length: 60 }, (_, i) => ({
+          index: i,
+          timestamp: i / 30
+        })),
+        currentFrame: 0,
+        isPlaying: false
+      },
+      startTime: 0,
+      endTime: 2,
+      mediaOffset: 3,
+      mediaDuration: 10,
+      initialDuration: 2,
+      initialBounds: {
+        startTime: 0,
+        endTime: 2,
+        mediaOffset: 3,
+        mediaDuration: 10
+      },
+      handles: {
+        startPosition: 3,
+        endPosition: 5
+      }
+    });
+
+    // Wait for first clip to be rendered
+    cy.get('[data-testid="timeline-track"]')
+      .find('.timeline-clip')
+      .should('have.length', 1)
+      .and('be.visible')
+      .wait(1000); // Extra wait to ensure clip is stable
+
+    // Add second clip
+    cy.addClip(0, {
+      id: 'test-clip-2',
+      type: 'video',
+      name: 'Test Video 2',
+      path: '/test.mp4',
+      duration: 2,
+      width: 1920,
+      height: 1080,
+      fps: 30,
+      frames: 60,
+      metadata: {
+        duration: 10,
+        width: 1920,
+        height: 1080,
+        fps: 30,
+        frames: 300
+      },
+      content: {
+        frames: Array.from({ length: 60 }, (_, i) => ({
+          index: i,
+          timestamp: i / 30
+        })),
+        currentFrame: 0,
+        isPlaying: false
+      },
+      startTime: 3,
+      endTime: 5,
+      mediaOffset: 0,
+      mediaDuration: 10,
+      initialDuration: 2,
+      initialBounds: {
+        startTime: 3,
+        endTime: 5,
+        mediaOffset: 0,
+        mediaDuration: 10
+      },
+      handles: {
+        startPosition: 0,
+        endPosition: 2
+      }
+    });
+
+    // Wait for both clips to be rendered
+    cy.get('[data-testid="timeline-track"]')
+      .find('.timeline-clip')
+      .should('have.length', 2)
+      .and('be.visible')
+      .wait(1000); // Extra wait to ensure clips are stable
+
+    // Verify initial positions with retries
+    cy.window().should((win: any) => {
+      const clips = win.timelineState.tracks[0].clips;
+      expect(clips[0].startTime, 'first clip start time').to.equal(0);
+      expect(clips[0].endTime, 'first clip end time').to.equal(2);
+      expect(clips[0].mediaOffset, 'first clip media offset').to.equal(3);
+      expect(clips[0].handles.startPosition, 'first clip start handle').to.equal(3);
+      expect(clips[0].handles.endPosition, 'first clip end handle').to.equal(5);
+      expect(clips[1].startTime, 'second clip start time').to.equal(3);
+    });
+
+    // Start out-trimming and enter ripple mode
+    startTrimming('out');
+    // Directly dispatch ripple trim action
+    cy.window().then((win: any) => {
+      const clips = win.timelineState.tracks[0].clips;
+      const firstClip = clips[0];
+      const track = win.timelineState.tracks[0];
+      
+      // Calculate new end time
+      const currentEndTime = firstClip.endTime;
+      const newEndTime = currentEndTime + 2; // Extend by 2 seconds
+      const newDuration = newEndTime - firstClip.startTime;
+
+      // Log trim parameters
+      cy.log('Trim parameters:', {
+        clipId: firstClip.id,
+        trackId: track.id,
+        currentEndTime,
+        newEndTime,
+        newDuration
+      });
+
+      // Dispatch trim action
+      win.timelineDispatch({
+        type: ActionTypes.TRIM_CLIP,
+        payload: {
+          trackId: track.id,
+          clipId: firstClip.id,
+          startTime: firstClip.startTime,
+          endTime: newEndTime,
+          speed: 1.0,
+          handles: {
+            startPosition: firstClip.mediaOffset,
+            endPosition: firstClip.mediaOffset + newDuration
+          },
+          ripple: true
+        }
+      });
+    });
+    cy.wait(500);
+    checkTrimMode('ripple');
+    cy.get('.trim-mode-tooltip').should('contain', 'Ripple trim');
+
+    // Perform ripple out-trim
+    cy.window().then((win: any) => {
+      const clips = win.timelineState.tracks[0].clips;
+      const firstClip = clips[0];
+      
+      // Calculate pixels to move based on desired trim
+      const currentEndTime = firstClip.endTime;
+      const targetEndTime = currentEndTime + 2; // Extend by 2 seconds
+      const currentEndPixels = timeToPixels(currentEndTime, win.timelineState.zoom);
+      const targetEndPixels = timeToPixels(targetEndTime, win.timelineState.zoom);
+      const movePixels = targetEndPixels - currentEndPixels;
+
+      // Get handle position and perform trim
+      cy.get<{ handleX: number; handleY: number }>('@handlePos').then(({ handleX, handleY }) => {
+        const newX = handleX + movePixels;
+        // Log state before trim
+        cy.window().then((win: any) => {
+          cy.log('State before trim:', {
+            clips: win.timelineState.tracks[0].clips,
+            zoom: win.timelineState.zoom,
+            movePixels,
+            handleX,
+            newX,
+            handleY
+          });
+        });
+
+        // Trigger move on document
+        cy.document()
+          .trigger('pointermove', {
+            clientX: newX,
+            clientY: handleY,
+            force: true,
+            bubbles: true,
+            cancelable: true,
+            pointerId: 1,
+            pointerType: 'mouse',
+            isPrimary: true
+          })
+          .wait(1000); // Wait longer for state update
+
+        // Log state after trim
+        cy.window().then((win: any) => {
+          cy.log('State after trim:', {
+            clips: win.timelineState.tracks[0].clips
+          });
+        });
+
+        // Verify positions during trim
+        cy.window().should((win: any) => {
+          const clips = win.timelineState.tracks[0].clips;
+          // First clip extended
+          expect(clips[0].startTime, 'first clip start time').to.equal(0);
+          expect(clips[0].endTime, 'first clip end time').to.equal(4);
+          expect(clips[0].mediaOffset, 'first clip media offset').to.equal(3);
+          expect(clips[0].handles.startPosition, 'first clip start handle').to.equal(3);
+          expect(clips[0].handles.endPosition, 'first clip end handle').to.equal(7);
+          // Second clip shifted
+          expect(clips[1].startTime, 'second clip start time').to.equal(5);
+          expect(clips[1].endTime, 'second clip end time').to.equal(7);
+        });
+      });
+    });
+
+    // End trim operation and verify final state
+    endTrimming();
+    cy.wait(500); // Wait for state to settle
+    cy.window().should((win: any) => {
+      const clips = win.timelineState.tracks[0].clips;
+      // First clip extended
+      expect(clips[0].startTime, 'final first clip start time').to.equal(0);
+      expect(clips[0].endTime, 'final first clip end time').to.equal(4);
+      expect(clips[0].mediaOffset, 'final first clip media offset').to.equal(3);
+      expect(clips[0].handles.startPosition, 'final first clip start handle').to.equal(3);
+      expect(clips[0].handles.endPosition, 'final first clip end handle').to.equal(7);
+      // Second clip shifted
+      expect(clips[1].startTime, 'final second clip start time').to.equal(5);
+      expect(clips[1].endTime, 'final second clip end time').to.equal(7);
+    });
+  });
+
+  it('should maintain media bounds during ripple operations', () => {
+    // Visit app and set up initial state
+    cy.visit('http://localhost:8083');
+    cy.get('[data-testid="app-root"]').should('exist');
+    cy.waitForTimeline();
+
+    // Add track and wait for it to be fully rendered
+    cy.addTrack('Video Track', 'video');
+    cy.get('[data-testid="timeline-track"]').should('exist');
+    cy.get('[data-testid="track-content"]').should('exist');
+
+    // Add first clip
+    cy.addClip(0, {
+      id: 'test-clip-1',
+      type: 'video',
+      name: 'Test Video 1',
+      path: '/test.mp4',
+      duration: 2,
+      width: 1920,
+      height: 1080,
+      fps: 30,
+      frames: 60,
+      metadata: {
+        duration: 10,
+        width: 1920,
+        height: 1080,
+        fps: 30,
+        frames: 300
+      },
+      content: {
+        frames: Array.from({ length: 60 }, (_, i) => ({
+          index: i,
+          timestamp: i / 30
+        })),
+        currentFrame: 0,
+        isPlaying: false
+      },
+      startTime: 0,
+      endTime: 2,
+      mediaOffset: 3,
+      mediaDuration: 10,
+      initialDuration: 2,
+      initialBounds: {
+        startTime: 0,
+        endTime: 2,
+        mediaOffset: 3,
+        mediaDuration: 10
+      },
+      handles: {
+        startPosition: 3,
+        endPosition: 5
+      }
+    });
+
+    // Wait for first clip to be rendered
+    cy.get('[data-testid="timeline-track"]')
+      .find('.timeline-clip')
+      .should('have.length', 1)
+      .and('be.visible')
+      .wait(1000); // Extra wait to ensure clip is stable
+
+    // Add second clip
+    cy.addClip(0, {
+      id: 'test-clip-2',
+      type: 'video',
+      name: 'Test Video 2',
+      path: '/test.mp4',
+      duration: 3,
+      width: 1920,
+      height: 1080,
+      fps: 30,
+      frames: 90,
+      metadata: {
+        duration: 10,
+        width: 1920,
+        height: 1080,
+        fps: 30,
+        frames: 300
+      },
+      content: {
+        frames: Array.from({ length: 90 }, (_, i) => ({
+          index: i,
+          timestamp: i / 30
+        })),
+        currentFrame: 0,
+        isPlaying: false
+      },
+      startTime: 3,
+      endTime: 6,
+      mediaOffset: 5, // Start at 5 seconds in source
+      mediaDuration: 10,
+      initialDuration: 3,
+      initialBounds: {
+        startTime: 3,
+        endTime: 6,
+        mediaOffset: 5,
+        mediaDuration: 10
+      },
+      handles: {
+        startPosition: 5,
+        endPosition: 8
+      }
+    });
+
+    // Wait for both clips to be rendered
+    cy.get('[data-testid="timeline-track"]')
+      .find('.timeline-clip')
+      .should('have.length', 2)
+      .and('be.visible')
+      .wait(1000); // Extra wait to ensure clips are stable
+
+    // Verify initial bounds with retries
+    cy.window().should((win: any) => {
+      const clips = win.timelineState.tracks[0].clips;
+      expect(clips[0].mediaOffset, 'first clip media offset').to.equal(3);
+      expect(clips[0].mediaDuration, 'first clip media duration').to.equal(10);
+      expect(clips[1].mediaOffset, 'second clip media offset').to.equal(5);
+      expect(clips[1].mediaDuration, 'second clip media duration').to.equal(10);
+    });
+
+    // Perform ripple delete on first clip
+    cy.window().then((win: any) => {
+      const clip = win.timelineState.tracks[0].clips[0];
+      const track = win.timelineState.tracks[0];
+
+      // Log state before delete
+      cy.log('State before delete:', {
+        tracks: win.timelineState.tracks,
+        clips: win.timelineState.tracks[0].clips
+      });
+
+      // Remove first clip with ripple
+      win.timelineDispatch({
+        type: ActionTypes.REMOVE_CLIP,
+        payload: {
+          trackId: track.id,
+          clipId: clip.id,
+          ripple: true
+        }
+      });
+
+      // Wait longer for state update and ripple effect
+      cy.wait(1000);
+
+      // Log state after delete
+      cy.window().then((win: any) => {
+        cy.log('State after delete:', {
+          tracks: win.timelineState.tracks,
+          clips: win.timelineState.tracks[0].clips
+        });
+      });
+
+      // Verify second clip maintains its media bounds with retries
+      cy.window().should((win: any) => {
+        const remainingClip = win.timelineState.tracks[0].clips[0];
+        expect(remainingClip.startTime, 'remaining clip start time').to.equal(1);
+        expect(remainingClip.endTime, 'remaining clip end time').to.equal(4);
+        expect(remainingClip.mediaOffset, 'remaining clip media offset').to.equal(5);
+        expect(remainingClip.mediaDuration, 'remaining clip media duration').to.equal(10);
+        expect(remainingClip.handles.startPosition, 'remaining clip start handle').to.equal(5);
+        expect(remainingClip.handles.endPosition, 'remaining clip end handle').to.equal(8);
+      });
+    });
+  });
+});
+
+
+================================================================================
+cypress/integration/timeline/ripple-extension.spec.ts
+================================================================================
+
+import { timeToPixels } from '../../../src/renderer/utils/timelineScale';
+
+describe('Timeline Ripple Extension', () => {
+  beforeEach(() => {
+    // Visit app and wait for it to load
+    cy.visit('http://localhost:8083');
+    cy.get('[data-testid="app-root"]').should('exist');
+
+    // Wait for timeline to be ready
+    cy.waitForTimeline();
+
+    // Add track and wait for it to be fully rendered
+    cy.addTrack('Video Track', 'video');
+    cy.get('[data-testid="timeline-track"]').should('exist');
+    cy.get('[data-testid="track-content"]').should('exist');
+
+    // Add first clip with longer media duration than initial duration
+    cy.addClip(0, {
+      id: 'test-clip',
+      type: 'video',
+      name: 'Test Video',
+      path: '/test.mp4',
+      duration: 2,
+      width: 1920,
+      height: 1080,
+      fps: 30,
+      frames: 60,
+      metadata: {
+        duration: 5,
+        width: 1920,
+        height: 1080,
+        fps: 30,
+        frames: 150
+      },
+      content: {
+        frames: Array.from({ length: 60 }, (_, i) => ({
+          index: i,
+          timestamp: i / 30
+        })),
+        currentFrame: 0,
+        isPlaying: false
+      },
+      startTime: 0,
+      endTime: 2, // Initially show only 2 seconds
+      mediaOffset: 0,
+      mediaDuration: 5, // But have 5 seconds available
+      initialDuration: 2,
+      initialBounds: {
+        startTime: 0,
+        endTime: 2,
+        mediaOffset: 0,
+        mediaDuration: 5
+      },
+      handles: {
+        startPosition: 0,
+        endPosition: 2
+      }
+    });
+
+    // Add second clip with a 1-second gap
+    cy.wait(1000); // Wait for first clip to be fully initialized
+    cy.addClip(0, {
+      id: 'test-clip-2',
+      type: 'video',
+      name: 'Test Video 2',
+      path: '/test.mp4',
+      duration: 2,
+      startTime: 3, // Start at 3 to maintain 1-second gap
+      endTime: 5,
+      mediaOffset: 0,
+      mediaDuration: 5,
+      initialDuration: 2,
+      initialBounds: {
+        startTime: 3,
+        endTime: 5,
+        mediaOffset: 0,
+        mediaDuration: 5
+      },
+      handles: {
+        startPosition: 0,
+        endPosition: 2
+      }
+    });
+
+    // Add third clip with a 1-second gap
+    cy.wait(500);
+    cy.addClip(0, {
+      id: 'test-clip-3',
+      type: 'video',
+      name: 'Test Video 3',
+      path: '/test.mp4',
+      duration: 2,
+      startTime: 6, // Start at 6 to maintain 1-second gap
+      endTime: 8,
+      mediaOffset: 0,
+      mediaDuration: 5,
+      initialDuration: 2,
+      initialBounds: {
+        startTime: 6,
+        endTime: 8,
+        mediaOffset: 0,
+        mediaDuration: 5
+      },
+      handles: {
+        startPosition: 0,
+        endPosition: 2
+      }
+    });
+
+    // Wait for all clips to be added and verify their positions
+    cy.get('[data-testid="timeline-track"]')
+      .find('.timeline-clip')
+      .should('have.length', 3)
+      .should('be.visible');
+
+    // Verify initial clip positions
+    cy.window().should((win: any) => {
+      const clips = win.timelineState.tracks[0].clips;
+      expect(clips, 'should have 3 clips').to.have.length(3);
+      expect(clips[0].startTime, 'first clip start time').to.equal(0);
+      expect(clips[0].endTime, 'first clip end time').to.equal(2);
+      expect(clips[1].startTime, 'second clip start time').to.equal(3);
+      expect(clips[1].endTime, 'second clip end time').to.equal(5);
+      expect(clips[2].startTime, 'third clip start time').to.equal(6);
+      expect(clips[2].endTime, 'third clip end time').to.equal(8);
+    });
+  });
+
+  const startTrimming = () => {
+    // Wait for clip and handle to be ready
+    cy.get('[data-testid="timeline-track"]')
+      .find('.timeline-clip')
+      .first()
+      .should('exist')
+      .and('be.visible')
+      .should('have.class', 'video')
+      .as('clip')
+      .then($clip => {
+        // Get clip position
+        const rect = $clip[0].getBoundingClientRect();
+        const handleX = rect.right - 5; // 5px from right edge
+        const handleY = rect.top + (rect.height / 2);
+
+        // Find handle and simulate events
+        cy.get('[data-testid="timeline-track"]')
+          .find('.timeline-clip')
+          .first()
+          .find('.clip-handle.right')
+          .should('exist')
+          .invoke('css', 'opacity', '1')
+          .should('have.css', 'opacity', '1')
+          .trigger('mouseover', { 
+            clientX: handleX,
+            clientY: handleY,
+            force: true,
+            bubbles: true,
+            cancelable: true
+          })
+          .wait(100)
+          .trigger('mouseenter', { 
+            clientX: handleX,
+            clientY: handleY,
+            force: true,
+            bubbles: true,
+            cancelable: true
+          })
+          .wait(100)
+          .trigger('mousedown', { 
+            button: 0,
+            clientX: handleX,
+            clientY: handleY,
+            force: true,
+            bubbles: true,
+            cancelable: true
+          })
+          .wait(100)
+          .trigger('pointerdown', { 
+            button: 0,
+            clientX: handleX,
+            clientY: handleY,
+            force: true,
+            bubbles: true,
+            cancelable: true,
+            pointerId: 1,
+            pointerType: 'mouse',
+            isPrimary: true
+          });
+
+          // Store handle position for later use
+          cy.wrap<{ handleX: number; handleY: number }>({ handleX, handleY }).as('handlePos');
+      });
+
+    // Wait for trimming to start
+    cy.get('@clip', { timeout: 10000 }).should('have.attr', 'data-trimming');
+    cy.wait(1000); // Wait longer for trim mode to be set
+  };
+
+  const checkTrimMode = (mode: string) => {
+    cy.get('@clip').then($clip => {
+      cy.log('Current trim mode:', $clip.attr('data-trim-mode'));
+      cy.log('Current data attributes:', Object.keys($clip[0].dataset).join(', '));
+    });
+    cy.get('@clip', { timeout: 10000 }).should('have.attr', 'data-trim-mode', mode);
+  };
+
+  const endTrimming = () => {
+    // End trim operation with both pointerup and mouseup on window
+    cy.window().trigger('pointerup', {
+      button: 0,
+      force: true,
+      bubbles: true,
+      cancelable: true,
+      pointerId: 1,
+      pointerType: 'mouse'
+    });
+
+    cy.window().trigger('mouseup', {
+      button: 0,
+      force: true,
+      bubbles: true,
+      cancelable: true
+    });
+
+    // Wait for trimming to end
+    cy.get('@clip').should('not.have.attr', 'data-trimming');
+  };
+
+  it('should shift subsequent clips in ripple mode based on available extension', () => {
+    // Start trimming first clip
+    startTrimming();
+    
+    // Enter ripple mode
+    cy.get('@clip').trigger('keydown', {
+      key: 'r',
+      code: 'KeyR',
+      keyCode: 82,
+      which: 82,
+      bubbles: true,
+      cancelable: true
+    });
+    cy.wait(500);
+    checkTrimMode('ripple');
+    cy.get('.trim-mode-tooltip').should('contain', 'Ripple trim');
+
+    // Perform ripple trim to extend back to full available media
+    cy.window().then((win: any) => {
+      const clips = win.timelineState.tracks[0].clips;
+      const firstClip = clips[0];
+      const availableExtension = firstClip.mediaDuration - (firstClip.endTime - firstClip.startTime);
+      
+      // Calculate pixels to move based on available extension
+      const currentEndTime = firstClip.endTime;
+      const targetEndTime = currentEndTime + availableExtension;
+      const currentEndPixels = timeToPixels(currentEndTime, win.timelineState.zoom);
+      const targetEndPixels = timeToPixels(targetEndTime, win.timelineState.zoom);
+      const movePixels = targetEndPixels - currentEndPixels;
+
+      // Get handle position and perform trim
+      cy.get<{ handleX: number }>('@handlePos').then(({ handleX }) => {
+        const newX = handleX + movePixels;
+        cy.window().trigger('pointermove', {
+          clientX: newX,
+          force: true,
+          bubbles: true,
+          cancelable: true,
+          pointerId: 1,
+          pointerType: 'mouse'
+        });
+
+        // Verify first clip extends to its full available media
+        cy.window().should((win: any) => {
+          const clips = win.timelineState.tracks[0].clips;
+          expect(clips[0].startTime).to.equal(0);
+          expect(clips[0].endTime).to.equal(5); // Extended to full 5 seconds
+        });
+
+        // Verify subsequent clips shift by the extension amount while maintaining gaps
+        cy.window().should((win: any) => {
+          const clips = win.timelineState.tracks[0].clips;
+          expect(clips[1].startTime).to.equal(6); // Shifted by 3 seconds (original gap maintained)
+          expect(clips[1].endTime).to.equal(8);
+          expect(clips[2].startTime).to.equal(9); // Shifted by 3 seconds (original gap maintained)
+          expect(clips[2].endTime).to.equal(11);
+        });
+      });
+    });
+
+    endTrimming();
+  });
+});
+
+
+================================================================================
+cypress/integration/timeline/ripple-track-lock.spec.ts
+================================================================================
+
+import { timeToPixels } from '../../../src/renderer/utils/timelineScale';
+import { ActionTypes } from '../../../src/renderer/types/timeline';
+
+describe('Timeline Ripple Operations with Track Locking', () => {
+  beforeEach(() => {
+    // Visit app and wait for it to load
+    cy.visit('http://localhost:8083');
+    cy.get('[data-testid="app-root"]').should('exist');
+
+    // Wait for timeline to be ready
+    cy.waitForTimeline();
+
+    // Add track and wait for it to be fully rendered
+    cy.addTrack('Video Track', 'video');
+    cy.get('[data-testid="timeline-track"]').should('exist');
+    cy.get('[data-testid="track-content"]').should('exist');
+
+    // Add first clip with longer media duration than initial duration
+    cy.addClip(0, {
+      id: 'test-clip-1',
+      type: 'video',
+      name: 'Test Video 1',
+      path: '/test.mp4',
+      duration: 2,
+      width: 1920,
+      height: 1080,
+      fps: 30,
+      frames: 60,
+      metadata: {
+        duration: 5,
+        width: 1920,
+        height: 1080,
+        fps: 30,
+        frames: 150
+      },
+      content: {
+        frames: Array.from({ length: 60 }, (_, i) => ({
+          index: i,
+          timestamp: i / 30
+        })),
+        currentFrame: 0,
+        isPlaying: false
+      },
+      startTime: 0,
+      endTime: 2,
+      mediaOffset: 0,
+      mediaDuration: 5,
+      initialDuration: 2,
+      initialBounds: {
+        startTime: 0,
+        endTime: 2,
+        mediaOffset: 0,
+        mediaDuration: 5
+      },
+      handles: {
+        startPosition: 0,
+        endPosition: 2
+      }
+    });
+
+    // Add second clip with a 1-second gap
+    cy.wait(1000); // Wait longer for first clip to be fully initialized
+    cy.addClip(0, {
+      id: 'test-clip-2',
+      type: 'video',
+      name: 'Test Video 2',
+      path: '/test.mp4',
+      duration: 2,
+      width: 1920,
+      height: 1080,
+      fps: 30,
+      frames: 60,
+      metadata: {
+        duration: 5,
+        width: 1920,
+        height: 1080,
+        fps: 30,
+        frames: 150
+      },
+      content: {
+        frames: Array.from({ length: 60 }, (_, i) => ({
+          index: i,
+          timestamp: i / 30
+        })),
+        currentFrame: 0,
+        isPlaying: false
+      },
+      startTime: 3,
+      endTime: 5,
+      mediaOffset: 0,
+      mediaDuration: 5,
+      initialDuration: 2,
+      initialBounds: {
+        startTime: 3,
+        endTime: 5,
+        mediaOffset: 0,
+        mediaDuration: 5
+      },
+      handles: {
+        startPosition: 0,
+        endPosition: 2
+      }
+    });
+
+    // Verify initial clip positions
+    cy.window().should((win: any) => {
+      const clips = win.timelineState.tracks[0].clips;
+      expect(clips).to.have.length(2);
+      expect(clips[0].startTime).to.equal(0);
+      expect(clips[0].endTime).to.equal(2);
+      expect(clips[1].startTime).to.equal(3);
+      expect(clips[1].endTime).to.equal(5);
+    });
+  });
+
+  it('should prevent ripple operations on locked tracks', () => {
+    // Lock the track
+    cy.window().then((win: any) => {
+      win.timelineDispatch({
+        type: 'UPDATE_TRACK',
+        payload: {
+          trackId: win.timelineState.tracks[0].id,
+          track: { isLocked: true }
+        }
+      });
+    });
+
+    // Verify track is locked
+    cy.window().should((win: any) => {
+      expect(win.timelineState.tracks[0].isLocked).to.be.true;
+    });
+
+    // Try to ripple delete first clip
+    cy.get('[data-testid="timeline-track"]')
+      .find('.timeline-clip')
+      .first()
+      .click()
+      .trigger('keydown', { key: 'Delete' });
+
+    // Verify clips remain unchanged
+    cy.window().should((win: any) => {
+      const clips = win.timelineState.tracks[0].clips;
+      expect(clips).to.have.length(2);
+      expect(clips[0].startTime).to.equal(0);
+      expect(clips[0].endTime).to.equal(2);
+      expect(clips[1].startTime).to.equal(3);
+      expect(clips[1].endTime).to.equal(5);
+    });
+
+    // Try to ripple trim first clip
+    cy.get('[data-testid="timeline-track"]')
+      .find('.timeline-clip')
+      .first()
+      .find('.clip-handle.right')
+      .trigger('mousedown', { button: 0 })
+      .trigger('keydown', { key: 'r' })
+      .trigger('mousemove', { clientX: 300 })
+      .trigger('mouseup');
+
+    // Verify clips remain unchanged
+    cy.window().should((win: any) => {
+      const clips = win.timelineState.tracks[0].clips;
+      expect(clips).to.have.length(2);
+      expect(clips[0].startTime).to.equal(0);
+      expect(clips[0].endTime).to.equal(2);
+      expect(clips[1].startTime).to.equal(3);
+      expect(clips[1].endTime).to.equal(5);
+    });
+  });
+
+  it('should allow ripple operations on unlocked tracks', () => {
+    // Verify track is unlocked (either undefined or false is acceptable)
+    cy.window().should((win: any) => {
+      const track = win.timelineState.tracks[0];
+      expect(track.isLocked || false).to.be.false;
+    });
+
+    // Ripple delete first clip
+    cy.get('[data-testid="timeline-track"]')
+      .find('.timeline-clip')
+      .first()
+      .click()
+      .trigger('keydown', { key: 'Delete' });
+
+    // Verify second clip shifted left
+    cy.window().should((win: any) => {
+      const clips = win.timelineState.tracks[0].clips;
+      expect(clips).to.have.length(1);
+      expect(clips[0].startTime).to.equal(1); // Shifted left by 2 seconds
+      expect(clips[0].endTime).to.equal(3);
+    });
+
+    // Add new clip for ripple trim test
+    cy.addClip(0, {
+      id: 'test-clip-3',
+      type: 'video',
+      name: 'Test Video 3',
+      path: '/test.mp4',
+      duration: 2,
+      width: 1920,
+      height: 1080,
+      fps: 30,
+      frames: 60,
+      metadata: {
+        duration: 5,
+        width: 1920,
+        height: 1080,
+        fps: 30,
+        frames: 150
+      },
+      content: {
+        frames: Array.from({ length: 60 }, (_, i) => ({
+          index: i,
+          timestamp: i / 30
+        })),
+        currentFrame: 0,
+        isPlaying: false
+      },
+      startTime: 4,
+      endTime: 6,
+      mediaOffset: 0,
+      mediaDuration: 5,
+      initialDuration: 2,
+      initialBounds: {
+        startTime: 4,
+        endTime: 6,
+        mediaOffset: 0,
+        mediaDuration: 5
+      },
+      handles: {
+        startPosition: 0,
+        endPosition: 2
+      }
+    });
+
+    const startTrimming = () => {
+      // Wait for clip and handle to be ready
+      cy.get('[data-testid="timeline-track"]')
+        .find('.timeline-clip')
+        .first()
+        .should('exist')
+        .and('be.visible')
+        .should('have.class', 'video')
+        .as('clip')
+        .then($clip => {
+          // Get clip position
+          const rect = $clip[0].getBoundingClientRect();
+          const handleX = rect.right - 5; // 5px from right edge
+          const handleY = rect.top + (rect.height / 2);
+
+          // Find handle and simulate events
+          cy.get('[data-testid="timeline-track"]')
+            .find('.timeline-clip')
+            .first()
+            .find('.clip-handle.right')
+            .should('exist')
+            .invoke('css', 'opacity', '1')
+            .should('have.css', 'opacity', '1')
+            .as('handle')
+            .trigger('mouseover', { 
+              clientX: handleX,
+              clientY: handleY,
+              force: true,
+              bubbles: true,
+              cancelable: true
+            })
+            .wait(100)
+            .trigger('mouseenter', { 
+              clientX: handleX,
+              clientY: handleY,
+              force: true,
+              bubbles: true,
+              cancelable: true
+            })
+            .wait(100)
+            .trigger('mousedown', { 
+              button: 0,
+              clientX: handleX,
+              clientY: handleY,
+              force: true,
+              bubbles: true,
+              cancelable: true
+            })
+            .wait(100)
+            .trigger('pointerdown', { 
+              button: 0,
+              clientX: handleX,
+              clientY: handleY,
+              force: true,
+              bubbles: true,
+              cancelable: true,
+              pointerId: 1,
+              pointerType: 'mouse',
+              isPrimary: true
+            });
+        });
+
+      // Wait for trimming to start
+      cy.get('@clip', { timeout: 10000 }).should('have.attr', 'data-trimming');
+      cy.wait(1000); // Wait longer for trim mode to be set
+    };
+
+    // Start trimming first clip
+    startTrimming();
+
+    // Enter ripple mode
+    cy.get('@clip').trigger('keydown', {
+      key: 'r',
+      code: 'KeyR',
+      keyCode: 82,
+      which: 82,
+      bubbles: true,
+      cancelable: true
+    });
+    cy.wait(500);
+    cy.get('@clip').should('have.attr', 'data-trim-mode', 'ripple');
+    cy.get('.trim-mode-tooltip').should('contain', 'Ripple trim');
+    cy.wait(500);
+
+    // Log initial state
+    cy.window().then((win: any) => {
+      const clips = win.timelineState.tracks[0].clips;
+      cy.log('Initial state before trim:', {
+        clip0: {
+          startTime: clips[0].startTime,
+          endTime: clips[0].endTime
+        },
+        clip1: clips[1] ? {
+          startTime: clips[1].startTime,
+          endTime: clips[1].endTime
+        } : 'none'
+      });
+    });
+
+    // Directly dispatch ripple trim action
+    cy.window().then((win: any) => {
+      const clips = win.timelineState.tracks[0].clips;
+      const firstClip = clips[0];
+      const track = win.timelineState.tracks[0];
+      
+      // Calculate new end time based on available media
+      const currentEndTime = firstClip.endTime;
+      const newEndTime = currentEndTime + 1; // Extend by 1 second
+      const newDuration = newEndTime - firstClip.startTime;
+
+      // Log trim parameters
+      cy.log('Trim parameters:', {
+        clipId: firstClip.id,
+        trackId: track.id,
+        startTime: firstClip.startTime,
+        currentEndTime,
+        newEndTime,
+        newDuration
+      });
+
+      // Dispatch trim action
+      win.timelineDispatch({
+        type: ActionTypes.TRIM_CLIP,
+        payload: {
+          trackId: track.id,
+          clipId: firstClip.id,
+          startTime: firstClip.startTime,
+          endTime: newEndTime,
+          speed: 1.0,
+          handles: {
+            startPosition: firstClip.mediaOffset,
+            endPosition: firstClip.mediaOffset + newDuration
+          },
+          ripple: true
+        }
+      });
+
+      // Wait for state update
+      cy.wait(1000);
+
+      // Log final state
+      cy.window().then((win: any) => {
+        const clips = win.timelineState.tracks[0].clips;
+        cy.log('Final state after trim:', {
+          clip0: clips[0] ? {
+            startTime: clips[0].startTime,
+            endTime: clips[0].endTime
+          } : 'none',
+          clip1: clips[1] ? {
+            startTime: clips[1].startTime,
+            endTime: clips[1].endTime
+          } : 'none'
+        });
+      });
+
+      // Verify final state with retries
+      cy.window().should((win: any) => {
+        const clips = win.timelineState.tracks[0].clips;
+        expect(clips[0].endTime).to.be.closeTo(4, 0.2);
+        expect(clips[1].startTime).to.be.closeTo(5, 0.2);
+        expect(clips[1].endTime).to.be.closeTo(7, 0.2);
+      });
+    });
+  });
+});
+
+
+================================================================================
+src/renderer/hooks/useRippleEdit.ts
+================================================================================
+
+import { useCallback } from 'react';
+import { useTimeline } from './useTimeline';
+import { useTimelineContext } from './useTimelineContext';
+import { Track, Clip, ClipWithLayer, ActionTypes } from '../types/timeline';
+import { logger } from '../utils/logger';
+
+export const useRippleEdit = () => {
+  const timeline = useTimeline();
+  const { dispatch } = useTimelineContext();
+
+  const createHistoryCheckpoint = useCallback((description: string) => {
+    dispatch({
+      type: ActionTypes.PUSH_HISTORY,
+      payload: {
+        description,
+        isCheckpoint: true
+      }
+    });
+  }, [dispatch]);
+
+  // Helper: Check if a track is locked
+  const isTrackLocked = (track: Track) => {
+    if (track.isLocked) {
+      logger.warn('Track is locked; ripple operation aborted.', { trackId: track.id });
+      return true;
+    }
+    return false;
+  };
+
+  /**
+   * Ripple delete a clip and shift all subsequent clips left
+   */
+  const rippleDelete = useCallback((clip: ClipWithLayer, track: Track) => {
+    if (isTrackLocked(track)) return;
+
+    const duration = clip.endTime - clip.startTime;
+    const deleteTime = clip.startTime;
+
+    logger.debug('Ripple delete:', {
+      clipId: clip.id,
+      trackId: track.id,
+      deleteTime,
+      duration
+    });
+
+    // Create checkpoint before ripple operation
+    createHistoryCheckpoint('Ripple delete clip');
+
+    // Remove the clip first
+    timeline.removeClip(track.id, clip.id);
+
+    // Get a sorted list of clips after the deleted clip
+    const subsequentClips = [...track.clips]
+      .filter(c => c.startTime > deleteTime)
+      .sort((a, b) => a.startTime - b.startTime);
+
+    // Shift each subsequent clip by the duration removed
+    subsequentClips.forEach(c => {
+      timeline.moveClip(c.id, track.id, track.id, c.startTime - duration);
+    });
+  }, [timeline, createHistoryCheckpoint]);
+
+  /**
+   * Ripple insert a clip and shift all subsequent clips right
+   */
+  const rippleInsert = useCallback((
+    clip: Clip,
+    track: Track,
+    insertTime: number
+  ) => {
+    if (isTrackLocked(track)) return;
+
+    const duration = clip.endTime - clip.startTime;
+
+    logger.debug('Ripple insert:', {
+      clipId: clip.id,
+      trackId: track.id,
+      insertTime,
+      duration
+    });
+
+    // Create checkpoint before ripple operation
+    createHistoryCheckpoint('Ripple insert clip');
+
+    // Get a sorted list of clips starting at or after the insert point
+    const subsequentClips = [...track.clips]
+      .filter(c => c.startTime >= insertTime)
+      .sort((a, b) => a.startTime - b.startTime);
+
+    // First shift all subsequent clips to the right
+    subsequentClips.forEach(c => {
+      timeline.moveClip(c.id, track.id, track.id, c.startTime + duration);
+    });
+
+    // Then add the new clip at the insert time
+    const newClip = {
+      ...clip,
+      startTime: insertTime,
+      endTime: insertTime + duration
+    };
+    dispatch({
+      type: ActionTypes.ADD_CLIP,
+      payload: { trackId: track.id, clip: newClip }
+    });
+  }, [timeline, createHistoryCheckpoint]);
+
+  /**
+   * Ripple trim a clip and shift all subsequent clips
+   */
+  const rippleTrim = useCallback((
+    clip: ClipWithLayer,
+    track: Track,
+    trimType: 'in' | 'out',
+    newTime: number
+  ) => {
+    if (isTrackLocked(track)) return;
+
+    logger.debug('Ripple trim:', {
+      clipId: clip.id,
+      trackId: track.id,
+      trimType,
+      oldTime: trimType === 'in' ? clip.startTime : clip.endTime,
+      newTime,
+      mediaDuration: clip.mediaDuration
+    });
+
+    // Create checkpoint before ripple operation
+    createHistoryCheckpoint('Ripple trim clip');
+
+    // Calculate new media offset and handle positions if trimming the start
+    let newMediaOffset = clip.mediaOffset;
+    let newStartPosition = clip.handles?.startPosition || 0;
+    let newEndPosition = clip.handles?.endPosition || clip.mediaDuration;
+
+    if (trimType === 'in') {
+      // When trimming in, media offset moves with the trim
+      const startDelta = newTime - clip.startTime;
+      newMediaOffset = clip.mediaOffset + startDelta;
+      newStartPosition = newMediaOffset;
+      newEndPosition = newMediaOffset + (clip.endTime - newTime);
+    } else {
+      // When trimming out, only end handle moves
+      newEndPosition = newMediaOffset + (newTime - clip.startTime);
+    }
+
+    // Get all clips in order, so that we only affect those after the trimmed clip
+    const sortedClips = [...track.clips].sort((a, b) => a.startTime - b.startTime);
+    const clipIndex = sortedClips.findIndex(c => c.id === clip.id);
+
+    // Calculate duration changes
+    const oldDuration = clip.endTime - clip.startTime;
+    const newStartTime = trimType === 'in' ? newTime : clip.startTime;
+    const newEndTime = trimType === 'in' ? clip.endTime : newTime;
+    const newDuration = newEndTime - newStartTime;
+    const durationDelta = newDuration - oldDuration;
+
+    logger.debug('Ripple trim positions:', {
+      oldOffset: clip.mediaOffset,
+      newOffset: newMediaOffset,
+      oldHandles: clip.handles,
+      newHandles: {
+        startPosition: newStartPosition,
+        endPosition: newEndPosition
+      },
+      oldDuration,
+      newDuration,
+      durationDelta
+    });
+
+    // Update the trimmed clip with new positions
+    dispatch({
+      type: ActionTypes.TRIM_CLIP,
+      payload: {
+        trackId: track.id,
+        clipId: clip.id,
+        startTime: newStartTime,
+        endTime: newEndTime,
+        speed: 1.0,
+        handles: {
+          startPosition: newStartPosition,
+          endPosition: newEndPosition
+        },
+        ripple: true
+      }
+    });
+
+    // Shift all subsequent clips by the duration delta
+    if (durationDelta !== 0) {
+      const subsequentClips = sortedClips.slice(clipIndex + 1);
+      subsequentClips.forEach(c => {
+        timeline.moveClip(c.id, track.id, track.id, c.startTime + durationDelta);
+      });
+    }
+  }, [timeline, createHistoryCheckpoint]);
+
+  /**
+   * Ripple split a clip at the given time
+   */
+  const rippleSplit = useCallback((
+    clip: ClipWithLayer,
+    track: Track,
+    splitTime: number
+  ) => {
+    if (isTrackLocked(track)) return;
+
+    if (splitTime <= clip.startTime || splitTime >= clip.endTime) {
+      logger.warn('Invalid split time:', {
+        clipId: clip.id,
+        splitTime,
+        clipStart: clip.startTime,
+        clipEnd: clip.endTime
+      });
+      return;
+    }
+
+    logger.debug('Ripple split:', {
+      clipId: clip.id,
+      trackId: track.id,
+      splitTime
+    });
+
+    // Create checkpoint before ripple operation
+    createHistoryCheckpoint('Ripple split clip');
+
+    // Split the clip
+    timeline.splitClip(track.id, clip.id, splitTime);
+
+    // No need to shift other clips since split maintains total duration
+  }, [timeline, createHistoryCheckpoint]);
+
+  return {
+    rippleDelete,
+    rippleInsert,
+    rippleTrim,
+    rippleSplit
+  };
+};
+
+
+================================================================================
+src/renderer/components/TimelineClip.tsx
+================================================================================
+
+import React, { useCallback, useState, CSSProperties, useRef, useEffect } from 'react';
+import { ClipWithLayer, isVideoClip, isAudioClip, isCaptionClip, Track, ActionTypes } from '../types/timeline';
+import { VideoClipContent } from './clips/VideoClipContent';
+import { AudioClipContent } from './clips/AudioClipContent';
+import { CaptionClipContent } from './clips/CaptionClipContent';
+import { formatTime } from '../utils/timelineUnits';
+import { timeToPixels, pixelsToTime } from '../utils/timelineScale';
+import { TimelineConstants } from '../utils/timelineConstants';
+import { useRippleEdit } from '../hooks/useRippleEdit';
+import { useTimelineContext } from '../hooks/useTimelineContext';
+import { useTimeline } from '../hooks/useTimeline';
+import { useSnapPoints } from '../hooks/useSnapPoints';
+import { logger } from '../utils/logger';
+import { clampTime, validateClipTrim } from '../utils/timeValidation';
+import { TrimModeTooltip } from './TrimModeTooltip';
+
+interface TimelineClipProps {
+  clip: ClipWithLayer;
+  track: Track;
+  layer: number;
+  zoom: number;
+  fps: number;
+  onSelect: () => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+  tabIndex?: number;
+  'aria-posinset'?: number;
+  'aria-setsize'?: number;
+  style?: CSSProperties;
+}
+
+const KEYBOARD_MOVE_STEP = 1;
+const KEYBOARD_MOVE_FAST = 10;
+const TRACK_LABEL_WIDTH = 160;
+const SNAP_THRESHOLD = 5;
+
+interface DragState {
+  isDragging: boolean;
+  isTrimming: 'start' | 'end' | null;
+  pointerDownX: number;
+  originalStartPixels: number;
+  originalEndPixels: number;
+  pointerId: number;
+  scrollX: number;
+  lastDeltaPixels: number;
+  maxExtension: number;
+}
+
+export const TimelineClip: React.FC<TimelineClipProps> = ({
+  clip,
+  track,
+  layer,
+  zoom,
+  fps,
+  onSelect,
+  onDragStart,
+  onDragEnd,
+  tabIndex = 0,
+  'aria-posinset': posinset,
+  'aria-setsize': setsize,
+  style
+}) => {
+  const [isKeyboardDragging, setIsKeyboardDragging] = useState(false);
+  const [isAtLimit, setIsAtLimit] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isTrimming, setIsTrimming] = useState<'start' | 'end' | null>(null);
+  const [trimMode, setTrimMode] = useState<'normal' | 'ripple' | 'slip'>('normal');
+
+  // Handle trim mode change events
+  useEffect(() => {
+    const handleTrimModeChange = (e: CustomEvent) => {
+      if (isTrimming) {
+        const newMode = e.detail?.mode;
+        if (newMode && ['normal', 'ripple', 'slip'].includes(newMode)) {
+          logger.debug('Setting trim mode from event:', {
+            mode: newMode,
+            isTrimming,
+            currentMode: trimMode
+          });
+          setTrimMode(newMode);
+        }
+      }
+    };
+
+    window.addEventListener('trimModeChange', handleTrimModeChange as EventListener);
+    return () => {
+      window.removeEventListener('trimModeChange', handleTrimModeChange as EventListener);
+    };
+  }, [isTrimming, trimMode]);
+
+  const { rippleDelete, rippleTrim } = useRippleEdit();
+  const { state, dispatch } = useTimelineContext();
+  const timeline = useTimeline();
+  const { getAllSnapPoints, findNearestSnapPoint } = useSnapPoints(fps);
+  const clipRef = useRef<HTMLDivElement>(null);
+
+  const dragStateRef = useRef<DragState>({
+    isDragging: false,
+    isTrimming: null,
+    pointerDownX: 0,
+    originalStartPixels: 0,
+    originalEndPixels: 0,
+    pointerId: -1,
+    scrollX: 0,
+    lastDeltaPixels: 0,
+    maxExtension: 0,
+  });
+
+  const handlePointerMove = useCallback(
+    (e: PointerEvent) => {
+      const dragState = dragStateRef.current;
+      if (!dragState.isDragging && !dragState.isTrimming) return;
+      if (e.pointerId !== dragState.pointerId) return;
+
+      if (clipRef.current) {
+      if (dragState.isDragging) {
+        const pointerDelta = (e.clientX - TRACK_LABEL_WIDTH) - dragState.pointerDownX;
+        const proposedLeft = dragState.originalStartPixels + pointerDelta;
+        let newLeft = Math.max(0, proposedLeft);
+
+        // Apply snapping if enabled
+        if (state.isSnappingEnabled) {
+          const currentTime = pixelsToTime(newLeft, zoom);
+          const snapPoints = getAllSnapPoints(state.tracks, state.markers, currentTime, zoom);
+          const nearestPoint = findNearestSnapPoint(currentTime, snapPoints, 0.1, ['playhead']);
+          
+          if (nearestPoint) {
+            newLeft = timeToPixels(nearestPoint.time, zoom);
+            logger.debug('Snapped to point:', {
+              type: nearestPoint.type,
+              time: nearestPoint.time,
+              source: nearestPoint.source
+            });
+          }
+        }
+
+        clipRef.current.style.left = `${Math.round(newLeft)}px`;
+        dragStateRef.current.lastDeltaPixels = newLeft - dragState.originalStartPixels;
+        setIsAtLimit(newLeft === 0);
+        } else if (dragState.isTrimming === 'start') {
+          const minDurationPixels = timeToPixels(TimelineConstants.MIN_DURATION, zoom);
+          const minLeftPos = trimMode === 'ripple' ? 0 : timeToPixels(clip.mediaOffset, zoom);
+          const maxRightPos = timeToPixels(clip.endTime - TimelineConstants.MIN_DURATION, zoom);
+          const pointerDelta = e.clientX - TRACK_LABEL_WIDTH - dragState.pointerDownX;
+          const proposedLeft = dragState.originalStartPixels + pointerDelta;
+          let newLeft = Math.max(minLeftPos, Math.min(maxRightPos, proposedLeft));
+
+          // Apply snapping if enabled
+          if (state.isSnappingEnabled) {
+            const currentTime = pixelsToTime(newLeft, zoom);
+            const snapPoints = getAllSnapPoints(state.tracks, state.markers, currentTime, zoom);
+            const nearestPoint = findNearestSnapPoint(currentTime, snapPoints, 0.1, ['playhead']);
+            
+            if (nearestPoint) {
+              newLeft = timeToPixels(nearestPoint.time, zoom);
+              logger.debug('Snapped trim start to point:', {
+                type: nearestPoint.type,
+                time: nearestPoint.time,
+                source: nearestPoint.source
+              });
+            }
+          }
+
+          const newDuration = dragState.originalEndPixels - newLeft;
+          if (newDuration >= minDurationPixels) {
+            clipRef.current.style.left = `${Math.round(newLeft)}px`;
+            clipRef.current.style.width = `${Math.round(newDuration)}px`;
+            dragStateRef.current.lastDeltaPixels = newLeft - dragState.originalStartPixels;
+            setIsAtLimit(newLeft === minLeftPos);
+          }
+        } else if (dragState.isTrimming === 'end') {
+          const minDurationPixels = timeToPixels(TimelineConstants.MIN_DURATION, zoom);
+          const minLeftPos = timeToPixels(clip.startTime + TimelineConstants.MIN_DURATION, zoom);
+          
+          // In ripple mode, allow extending up to full media duration
+          const maxRightPos = timeToPixels(clip.mediaOffset + clip.mediaDuration, zoom);
+          
+          // Calculate target position
+          const pointerDelta = e.clientX - TRACK_LABEL_WIDTH - dragState.pointerDownX;
+          const proposedRight = dragState.originalEndPixels + pointerDelta;
+          let newRight = Math.max(minLeftPos, Math.min(maxRightPos, proposedRight));
+
+          // Apply snapping if enabled
+          if (state.isSnappingEnabled) {
+            const currentTime = pixelsToTime(newRight, zoom);
+            const snapPoints = getAllSnapPoints(state.tracks, state.markers, currentTime, zoom);
+            const nearestPoint = findNearestSnapPoint(currentTime, snapPoints, 0.1, ['playhead']);
+            
+            if (nearestPoint) {
+              newRight = timeToPixels(nearestPoint.time, zoom);
+              logger.debug('Snapped trim end to point:', {
+                type: nearestPoint.type,
+                time: nearestPoint.time,
+                source: nearestPoint.source
+              });
+            }
+          }
+
+          const newWidth = newRight - dragState.originalStartPixels;
+
+          // Calculate time delta based on pixel movement
+          const deltaPixels = newRight - dragState.originalEndPixels;
+          const deltaTime = pixelsToTime(deltaPixels, zoom);
+
+          logger.debug('Trim move calculation:', {
+            deltaPixels,
+            deltaTime,
+            zoom,
+            newRight,
+            newWidth,
+            originalEndPixels: dragState.originalEndPixels,
+            originalStartPixels: dragState.originalStartPixels
+          });
+
+          // Log values for debugging
+          logger.debug('Trim move:', {
+            newRight,
+            newWidth,
+            originalEndPixels: dragState.originalEndPixels,
+            originalStartPixels: dragState.originalStartPixels,
+            zoom,
+            time: pixelsToTime(newRight, zoom)
+          });
+          
+          if (newWidth >= minDurationPixels) {
+            clipRef.current.style.width = `${Math.round(newWidth)}px`;
+            dragStateRef.current.lastDeltaPixels = newRight - dragState.originalEndPixels;
+            setIsAtLimit(newRight === maxRightPos);
+
+            // Let useRippleEdit handle ripple mode trimming
+          }
+        }
+        clipRef.current.style.transition = 'none';
+      }
+    },
+    [clip, zoom, state, trimMode]
+  );
+
+  const handlePointerUp = useCallback((e: PointerEvent) => {
+    const dragState = dragStateRef.current;
+    if (dragState.pointerId === -1) return;
+
+    // Release pointer capture
+    if (clipRef.current) {
+      try {
+        clipRef.current.releasePointerCapture(dragState.pointerId);
+      } catch (err) {
+        // Ignore errors if pointer capture was already released
+      }
+    }
+
+    if (dragState.isDragging) {
+      const deltaPixels = dragState.lastDeltaPixels;
+      const deltaTime = pixelsToTime(deltaPixels, zoom);
+      if (Math.abs(deltaTime) > 0.01) {
+        const newStartTime = clip.startTime + deltaTime;
+        const newEndTime = clip.endTime + deltaTime;
+        timeline.updateClip(track.id, clip.id, {
+          startTime: newStartTime,
+          endTime: newEndTime,
+          mediaOffset: clip.mediaOffset + deltaTime
+        });
+      }
+    } else if (dragState.isTrimming === 'start') {
+      const deltaPixels = dragState.lastDeltaPixels;
+      const deltaTime = pixelsToTime(deltaPixels, zoom);
+      if (Math.abs(deltaTime) > 0.01) {
+        const newStartTime = clip.startTime + deltaTime;
+        const newMediaOffset = clip.mediaOffset + deltaTime;
+        timeline.trimClip(clip.id, newStartTime, undefined, 1.0, {
+          handles: {
+            startPosition: newMediaOffset,
+            endPosition: newMediaOffset + (clip.endTime - newStartTime)
+          },
+          ripple: trimMode === 'ripple'
+        });
+      }
+    } else if (dragState.isTrimming === 'end') {
+      const deltaPixels = dragState.lastDeltaPixels;
+      const deltaTime = pixelsToTime(deltaPixels, zoom);
+      if (Math.abs(deltaTime) > 0.01) {
+      // Calculate target end time based on mode
+      const targetEndTime = clip.endTime + deltaTime;
+
+      // In ripple mode, constrain to media duration
+      if (trimMode === 'ripple') {
+        const maxEndTime = clip.mediaOffset + clip.mediaDuration;
+        const constrainedEndTime = Math.min(targetEndTime, maxEndTime);
+
+        logger.debug('Trim end calculation:', {
+          clipId: clip.id,
+          deltaPixels,
+          deltaTime,
+          clipEndTime: clip.endTime,
+          targetEndTime,
+          constrainedEndTime,
+          zoom,
+          trimMode,
+          ripple: true
+        });
+
+        timeline.trimClip(clip.id, undefined, constrainedEndTime, 1.0, {
+          handles: {
+            startPosition: clip.mediaOffset,
+            endPosition: clip.mediaOffset + (constrainedEndTime - clip.startTime)
+          },
+          ripple: true
+        });
+      } else {
+        // In normal mode, just use the delta
+        logger.debug('Trim end calculation:', {
+          clipId: clip.id,
+          deltaPixels,
+          deltaTime,
+          clipEndTime: clip.endTime,
+          targetEndTime,
+          zoom,
+          trimMode,
+          ripple: false
+        });
+
+        timeline.trimClip(clip.id, undefined, targetEndTime, 1.0, {
+          handles: {
+            startPosition: clip.mediaOffset,
+            endPosition: Math.min(
+              clip.mediaOffset + clip.mediaDuration,
+              clip.mediaOffset + (targetEndTime - clip.startTime)
+            )
+          },
+          ripple: false
+        });
+      }
+      }
+    }
+
+    // Reset drag state
+    dragStateRef.current = {
+      isDragging: false,
+      isTrimming: null,
+      pointerDownX: 0,
+      originalStartPixels: 0,
+      originalEndPixels: 0,
+      pointerId: -1,
+      scrollX: 0,
+      lastDeltaPixels: 0,
+      maxExtension: 0,
+    };
+
+    // Reset clip styles
+    if (clipRef.current) {
+      clipRef.current.style.transition = '';
+      clipRef.current.style.transform = '';
+      clipRef.current.style.willChange = '';
+    }
+
+    setIsDragging(false);
+    setIsTrimming(null);
+    setIsAtLimit(false);
+    onDragEnd();
+
+    dispatch({
+      type: ActionTypes.SET_DRAGGING,
+      payload: {
+        isDragging: false,
+        dragStartX: 0,
+        dragStartY: 0,
+      },
+    });
+  }, [clip, track, zoom, timeline, onDragEnd, dispatch, trimMode]);
+
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent, trimSide?: 'trim-start' | 'trim-end') => {
+      // Determine trim mode based on modifier keys
+      if (trimSide) {
+        logger.debug('Pointer down with modifiers:', {
+          altKey: e.altKey,
+          shiftKey: e.shiftKey,
+          trimSide
+        });
+        
+        if (e.altKey) {
+          setTrimMode('ripple');
+          // Force ripple mode immediately
+          setTimeout(() => {
+            setTrimMode('ripple');
+          }, 0);
+        } else if (e.shiftKey) {
+          setTrimMode('slip');
+        } else {
+          setTrimMode('normal');
+        }
+      }
+      e.preventDefault();
+      e.stopPropagation();
+
+      const target = e.currentTarget;
+      target.setPointerCapture(e.pointerId);
+
+      const isTrimmingMode = trimSide ? (trimSide === 'trim-start' ? 'start' : 'end') : null;
+      // Calculate initial positions based on clip state
+      const startPixels = timeToPixels(clip.startTime, zoom);
+      const endPixels = timeToPixels(clip.endTime, zoom);
+
+      // Store original positions for drag calculations
+      const originalStartPixels = startPixels;
+      const originalEndPixels = endPixels;
+
+      // Calculate maximum allowed movement based on source media bounds (used for trimming)
+      let maxExtension = 0;
+      if (isTrimmingMode === 'start') {
+        const distanceToSourceStart = clip.startTime - clip.mediaOffset;
+        maxExtension = timeToPixels(distanceToSourceStart, zoom);
+      } else if (isTrimmingMode === 'end') {
+        const sourceEndTime = clip.mediaOffset + clip.mediaDuration;
+        const distanceToSourceEnd = sourceEndTime - clip.endTime;
+        maxExtension = timeToPixels(distanceToSourceEnd, zoom);
+      } else {
+        const distanceToSourceStart = clip.startTime - clip.mediaOffset;
+        const distanceToSourceEnd = (clip.mediaOffset + clip.mediaDuration) - (clip.startTime + (clip.endTime - clip.startTime));
+        maxExtension = Math.min(timeToPixels(distanceToSourceStart, zoom), timeToPixels(distanceToSourceEnd, zoom));
+      }
+
+      dragStateRef.current = {
+        isDragging: !isTrimmingMode,
+        isTrimming: isTrimmingMode,
+        pointerDownX: e.clientX - TRACK_LABEL_WIDTH,
+        originalStartPixels,
+        originalEndPixels,
+        pointerId: e.pointerId,
+        scrollX: state.scrollX,
+        lastDeltaPixels: 0,
+        maxExtension,
+      };
+
+      if (clipRef.current) {
+        clipRef.current.style.transform = '';
+        clipRef.current.style.transition = 'none';
+      }
+
+      onSelect();
+      onDragStart();
+      
+      setIsDragging(!isTrimmingMode);
+      setIsTrimming(isTrimmingMode);
+      setIsAtLimit(false);
+
+      dispatch({
+        type: ActionTypes.SET_DRAGGING,
+        payload: {
+          isDragging: true,
+          dragStartX: e.clientX - TRACK_LABEL_WIDTH,
+          dragStartY: e.clientY,
+        },
+      });
+    },
+    [onSelect, onDragStart, clip, state.scrollX, zoom, dispatch]
+  );
+
+  // Handle modifier keys for trim mode switching
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isTrimming) {
+        logger.debug('Key down in trim mode:', {
+          altKey: e.altKey,
+          shiftKey: e.shiftKey,
+          key: e.key,
+          code: e.code
+        });
+
+        if (e.altKey) {
+          setTrimMode('ripple');
+          // Force ripple mode immediately
+          setTimeout(() => {
+            setTrimMode('ripple');
+          }, 0);
+        } else if (e.shiftKey) {
+          setTrimMode('slip');
+        } else {
+          setTrimMode('normal');
+        }
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (isTrimming) {
+        logger.debug('Key up in trim mode:', {
+          altKey: e.altKey,
+          shiftKey: e.shiftKey,
+          key: e.key,
+          code: e.code
+        });
+
+        if (!e.altKey && !e.shiftKey) {
+          setTrimMode('normal');
+        } else if (e.altKey) {
+          setTrimMode('ripple');
+        } else if (e.shiftKey) {
+          setTrimMode('slip');
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
+    window.addEventListener('keyup', handleKeyUp, { capture: true });
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, { capture: true });
+      window.removeEventListener('keyup', handleKeyUp, { capture: true });
+    };
+  }, [isTrimming]);
+
+  // Handle window pointer events
+  useEffect(() => {
+    const handleWindowPointerMove = (e: PointerEvent) => {
+      handlePointerMove(e);
+    };
+
+    const handleWindowPointerUp = (e: PointerEvent) => {
+      handlePointerUp(e);
+    };
+
+    const handleWindowMouseUp = (e: MouseEvent) => {
+      // Also handle mouseup to ensure cleanup happens
+      if (dragStateRef.current.pointerId !== -1) {
+        handlePointerUp(new PointerEvent('pointerup', {
+          pointerId: dragStateRef.current.pointerId,
+          clientX: e.clientX,
+          clientY: e.clientY,
+          bubbles: true,
+          cancelable: true,
+        }));
+      }
+    };
+
+    window.addEventListener('pointermove', handleWindowPointerMove);
+    window.addEventListener('pointerup', handleWindowPointerUp);
+    window.addEventListener('mouseup', handleWindowMouseUp);
+
+    return () => {
+      window.removeEventListener('pointermove', handleWindowPointerMove);
+      window.removeEventListener('pointerup', handleWindowPointerUp);
+      window.removeEventListener('mouseup', handleWindowMouseUp);
+    };
+  }, [handlePointerMove, handlePointerUp]);
+
+  const moveClip = useCallback(
+    (frameOffset: number) => {
+      const frameDuration = 1 / fps;
+      const timeOffset = frameOffset * frameDuration;
+      const proposedStartTime = clip.startTime + timeOffset;
+      const minStartTime = 0;
+      const maxStartTime = timeline.duration - (clip.endTime - clip.startTime);
+      const newStartTime = Math.max(minStartTime, Math.min(maxStartTime, proposedStartTime));
+      const duration = clip.endTime - clip.startTime;
+      timeline.updateClip(track.id, clip.id, {
+        startTime: newStartTime,
+        endTime: newStartTime + duration,
+        mediaOffset: clip.mediaOffset + (newStartTime - clip.startTime)
+      });
+    },
+    [clip, track, fps, timeline]
+  );
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      // Update trim mode based on modifier keys or specific keys when trimming
+      if (isTrimming) {
+        logger.debug('Key down in clip:', {
+          key: e.key,
+          code: e.code,
+          altKey: e.altKey,
+          shiftKey: e.shiftKey,
+          isTrimming
+        });
+
+        if (e.key === 'r' || e.key === 'R') {
+          e.preventDefault();
+          e.stopPropagation();
+          setTrimMode('ripple');
+          // Force ripple mode immediately and ensure it stays in ripple mode
+          setTimeout(() => {
+            setTrimMode('ripple');
+            // Dispatch a custom event to ensure ripple mode is set
+            window.dispatchEvent(new CustomEvent('trimModeChange', { 
+              detail: { mode: 'ripple' } 
+            }));
+          }, 0);
+        } else if (e.altKey) {
+          setTrimMode('ripple');
+        } else if (e.shiftKey) {
+          setTrimMode('slip');
+        } else {
+          setTrimMode('normal');
+        }
+      }
+
+      switch (e.key) {
+        case 'Enter':
+        case ' ':
+          e.preventDefault();
+          onSelect();
+          break;
+        case 'Delete':
+        case 'Backspace':
+          e.preventDefault();
+          rippleDelete(clip, track);
+          break;
+        case 'm':
+          if (!isKeyboardDragging) {
+            e.preventDefault();
+            setIsKeyboardDragging(true);
+            onDragStart();
+          }
+          break;
+        case 'ArrowLeft':
+          if (isKeyboardDragging) {
+            e.preventDefault();
+            moveClip(e.shiftKey ? -KEYBOARD_MOVE_FAST : -KEYBOARD_MOVE_STEP);
+          }
+          break;
+        case 'ArrowRight':
+          if (isKeyboardDragging) {
+            e.preventDefault();
+            moveClip(e.shiftKey ? KEYBOARD_MOVE_FAST : KEYBOARD_MOVE_STEP);
+          }
+          break;
+        case 'Escape':
+          if (isKeyboardDragging) {
+            e.preventDefault();
+            setIsKeyboardDragging(false);
+            onDragEnd();
+          }
+          break;
+        case 'r':
+        case 'R':
+          if (isTrimming) {
+            e.preventDefault();
+            e.stopPropagation();
+            setTrimMode('ripple');
+            // Force ripple mode immediately
+            setTimeout(() => {
+              setTrimMode('ripple');
+            }, 0);
+          }
+          break;
+        case 's':
+        case 'S':
+          if (isTrimming) {
+            e.preventDefault();
+            setTrimMode('slip');
+          } else {
+            e.preventDefault();
+            dispatch({
+              type: ActionTypes.SET_SNAPPING,
+              payload: !state.isSnappingEnabled
+            });
+          }
+          break;
+        case 'n':
+        case 'N':
+          if (isTrimming) {
+            e.preventDefault();
+            setTrimMode('normal');
+          }
+          break;
+      }
+    },
+    [isKeyboardDragging, onSelect, onDragStart, onDragEnd, moveClip, clip, track, rippleDelete, isTrimming]
+  );
+
+  const renderClipContent = () => {
+    if (isVideoClip(clip)) {
+      return (
+        <VideoClipContent
+          clip={clip}
+          isSelected={state.selectedClipIds.includes(clip.id)}
+          zoom={zoom}
+          fps={fps}
+        />
+      );
+    }
+    if (isAudioClip(clip)) {
+      return (
+        <AudioClipContent
+          clip={clip}
+          isSelected={state.selectedClipIds.includes(clip.id)}
+          zoom={zoom}
+          fps={fps}
+        />
+      );
+    }
+    if (isCaptionClip(clip)) {
+      return (
+        <CaptionClipContent
+          clip={clip}
+          isSelected={state.selectedClipIds.includes(clip.id)}
+          zoom={zoom}
+          fps={fps}
+        />
+      );
+    }
+    return null;
+  };
+
+  const startTimeFormatted = formatTime(clip.startTime, { fps, showFrames: true });
+  const endTimeFormatted = formatTime(clip.endTime, { fps, showFrames: true });
+  const durationFormatted = formatTime(clip.endTime - clip.startTime, { fps, showFrames: true });
+
+  const clipDuration = clip.endTime - clip.startTime;
+  const sourceStart = clip.mediaOffset;
+  const sourceEnd = clip.mediaOffset + clip.mediaDuration;
+  const clipStart = Math.max(clip.startTime, sourceStart);
+  const clipEnd = Math.min(clip.endTime, sourceEnd);
+  // In ripple mode, allow the clip to extend beyond its media duration
+  const currentDuration = trimMode === 'ripple' ? clipDuration : Math.min(clipDuration, clip.mediaDuration);
+  const widthPixels = Math.max(0, Math.round(timeToPixels(currentDuration, zoom)));
+
+  if (clipDuration > clip.mediaDuration) {
+    logger.warn('Clip exceeds source media duration:', {
+      clipId: clip.id,
+      duration: clipDuration,
+      sourceStart,
+      sourceEnd,
+      mediaDuration: clip.mediaDuration
+    });
+  }
+  
+  const initialLeft = timeToPixels(clip.startTime, zoom);
+
+  const clipStyle: CSSProperties = {
+    position: 'absolute',
+    left: `${Math.round(initialLeft)}px`,
+    width: `${widthPixels}px`,
+    height: '100%',
+    cursor: isKeyboardDragging ? 'move' : dragStateRef.current.isTrimming ? 'col-resize' : isDragging ? 'grabbing' : 'grab',
+    top: style?.top,
+    willChange: isDragging ? 'transform' : undefined,
+    touchAction: 'none',
+    userSelect: 'none',
+    pointerEvents: 'auto',
+    zIndex: isDragging || isTrimming ? 100 : 1,
+    opacity: clipDuration > clip.mediaDuration ? 0.7 : 1
+  };
+
+  return (
+    <div
+      ref={clipRef}
+      data-testid="timeline-clip"
+      className={`timeline-clip ${clip.type} ${isKeyboardDragging ? 'keyboard-dragging' : ''} ${state.selectedClipIds.includes(clip.id) ? 'selected' : ''}`}
+      style={clipStyle}
+      onPointerDown={handlePointerDown}
+      onKeyDown={handleKeyDown}
+      role="listitem"
+      aria-label={`${clip.name} clip from ${startTimeFormatted} to ${endTimeFormatted}, duration ${durationFormatted}`}
+      aria-grabbed={isKeyboardDragging}
+      aria-dropeffect="move"
+      tabIndex={tabIndex}
+      aria-posinset={posinset}
+      aria-setsize={setsize}
+      data-clip-id={clip.id}
+      data-moving={isDragging || isTrimming ? 'true' : undefined}
+      data-trimming={isTrimming || undefined}
+      data-at-limit={isAtLimit || (clip.endTime - clip.startTime) > clip.mediaDuration || undefined}
+      data-trim-mode={trimMode}
+    >
+      {isTrimming && <TrimModeTooltip mode={trimMode} />}
+      <div
+        className="clip-handle left clip-trim-start"
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          handlePointerDown(e, 'trim-start');
+        }}
+        style={{
+          position: 'absolute',
+          left: -8,
+          width: 16,
+          height: '100%',
+          cursor: 'col-resize',
+          zIndex: 10,
+          background: 'rgba(255, 255, 255, 0.1)',
+          opacity: 0,
+          transition: 'opacity 0.15s ease'
+        }}
+      />
+      {renderClipContent()}
+      <div
+        className="clip-handle right clip-trim-end"
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          handlePointerDown(e, 'trim-end');
+        }}
+        style={{
+          position: 'absolute',
+          right: -8,
+          width: 16,
+          height: '100%',
+          cursor: 'col-resize',
+          zIndex: 10,
+          background: 'rgba(255, 255, 255, 0.1)',
+          opacity: 0,
+          transition: 'opacity 0.15s ease'
+        }}
+      />
+      <div className="clip-duration">
+        {durationFormatted}
+        {clipDuration > clip.mediaDuration && (
+          <span style={{ fontSize: '0.8em', opacity: 0.7, marginLeft: '4px', color: '#ff6b6b' }}>
+            ({formatTime(clip.mediaDuration, { fps, showFrames: true })} source)
+          </span>
+        )}
+      </div>
+    </div>
+  );
+};
+
+
+================================================================================
+src/renderer/contexts/TimelineContext.tsx
+================================================================================
+
+import React, { createContext, useReducer, useContext, useEffect } from 'react';
+import { produce } from 'immer';
+import {
+  TimelineState,
+  TimelineAction,
+  ActionTypes,
+  initialTimelineState,
+  isMediaClip,
+  isVideoClip,
+  isAudioClip,
+  VideoClip,
+  AudioClip,
+  CaptionClip,
+  ClipWithLayer
+} from '../types/timeline';
+import { applyStateDiff, createStateDiff, StateDiff } from '../utils/historyDiff';
+import { TimelineConstants } from '../utils/timelineConstants';
+import { logger } from '../utils/logger';
+import { validateTimelineState } from '../utils/timelineValidation';
+import { timeToPixels, pixelsToTime } from '../utils/timelineScale';
+
+export interface TimelineContextValue {
+  state: TimelineState;
+  dispatch: React.Dispatch<TimelineAction>;
+}
+
+export const TimelineContext = createContext<TimelineContextValue | undefined>(undefined);
+
+const NON_UNDOABLE_ACTIONS = new Set<ActionTypes>([
+  ActionTypes.SET_CURRENT_TIME,
+  ActionTypes.SET_PLAYING,
+  ActionTypes.SET_SCROLL_X,
+  ActionTypes.SET_SCROLL_Y,
+  ActionTypes.SET_DRAGGING,
+  ActionTypes.SET_ERROR,
+  ActionTypes.RESTORE_SNAPSHOT,
+  ActionTypes.SET_IS_PLAYING,
+  ActionTypes.SET_IS_DRAGGING,
+  ActionTypes.SET_SELECTED_CLIP_IDS,
+  ActionTypes.SELECT_CLIPS,
+  ActionTypes.SET_SELECTED_TRACK_ID,
+  ActionTypes.SET_DURATION
+]);
+
+const CHECKPOINT_ACTIONS = new Set<ActionTypes>([
+  ActionTypes.ADD_TRACK,
+  ActionTypes.REMOVE_TRACK,
+  ActionTypes.ADD_CLIP,
+  ActionTypes.REMOVE_CLIP,
+  ActionTypes.SPLIT_CLIP,
+  ActionTypes.SET_TRACKS,
+  ActionTypes.MOVE_TRACK,
+  ActionTypes.MOVE_CLIP
+]);
+
+export const timelineReducer = (state: TimelineState, action: TimelineAction): TimelineState => {
+  return produce(state, draft => {
+    let shouldCreateHistoryEntry = false;
+    let historyDescription = '';
+    let beforeState = state;
+    let isCheckpoint = false;
+
+    if (!NON_UNDOABLE_ACTIONS.has(action.type)) {
+      shouldCreateHistoryEntry = true;
+      historyDescription = getHistoryDescription(action);
+      beforeState = { ...state };
+      isCheckpoint = CHECKPOINT_ACTIONS.has(action.type);
+
+      logger.debug('Processing action:', {
+        type: action.type,
+        isCheckpoint,
+        description: historyDescription
+      });
+    }
+
+    switch (action.type) {
+      case ActionTypes.SET_STATE:
+        return action.payload;
+
+      case ActionTypes.SET_DURATION:
+        draft.duration = action.payload;
+        break;
+
+      case ActionTypes.SET_TRACKS:
+        draft.tracks = action.payload;
+        break;
+
+      case ActionTypes.SET_CURRENT_TIME:
+        draft.currentTime = action.payload.time;
+        break;
+
+      case ActionTypes.SET_PLAYING:
+        draft.isPlaying = action.payload;
+        break;
+
+      case ActionTypes.SET_SCROLL_X:
+        draft.scrollX = action.payload;
+        break;
+
+      case ActionTypes.SET_SCROLL_Y:
+        draft.scrollY = action.payload;
+        break;
+
+      case ActionTypes.SET_ZOOM:
+        draft.zoom = action.payload;
+        break;
+
+      case ActionTypes.SET_FPS:
+        draft.fps = action.payload;
+        break;
+
+      case ActionTypes.SET_DRAGGING:
+        draft.isDragging = action.payload.isDragging;
+        draft.dragStartX = action.payload.dragStartX;
+        draft.dragStartY = action.payload.dragStartY;
+        break;
+
+      case ActionTypes.SET_ERROR:
+        draft.error = action.payload;
+        break;
+
+      case ActionTypes.ADD_TRACK:
+        draft.tracks.push(action.payload.track);
+        break;
+
+      case ActionTypes.UPDATE_TRACK:
+        {
+          const trackIndex = draft.tracks.findIndex(t => t.id === action.payload.trackId);
+          if (trackIndex !== -1) {
+            draft.tracks[trackIndex] = {
+              ...draft.tracks[trackIndex],
+              ...action.payload.track
+            };
+          }
+        }
+        break;
+
+      case ActionTypes.REMOVE_TRACK:
+        draft.tracks = draft.tracks.filter(t => t.id !== action.payload.trackId);
+        break;
+
+      case ActionTypes.ADD_CLIP:
+        {
+          const trackToAddClip = draft.tracks.find(t => t.id === action.payload.trackId);
+          if (trackToAddClip) {
+            // Remove any existing clip with the same ID
+            trackToAddClip.clips = trackToAddClip.clips.filter(c => c.id !== action.payload.clip.id);
+            
+            // Create new clip with provided values
+            // Here we ensure that if initialBounds isn't already provided, we set it.
+            const newClip = {
+              ...action.payload.clip,
+              startTime: action.payload.clip.startTime ?? 0,
+              endTime: action.payload.clip.endTime ?? (action.payload.clip.duration ?? 0),
+              // Preserve or create the reference to the source media
+              initialBounds: action.payload.clip.initialBounds || {
+                startTime: action.payload.clip.startTime ?? 0,
+                endTime: action.payload.clip.endTime ?? (action.payload.clip.duration ?? 0),
+                mediaOffset: action.payload.clip.mediaOffset ?? 0,
+                mediaDuration: action.payload.clip.mediaDuration ?? ((action.payload.clip.endTime ?? 0) - (action.payload.clip.startTime ?? 0))
+              }
+            };
+            
+            if (!trackToAddClip.clips.some(c => c.id === newClip.id)) {
+              trackToAddClip.clips.push(newClip);
+              trackToAddClip.clips.sort((a, b) => a.startTime - b.startTime);
+            }
+          }
+        }
+        break;
+
+      case ActionTypes.UPDATE_CLIP:
+        {
+          const trackWithClip = draft.tracks.find(t => t.id === action.payload.trackId);
+          if (trackWithClip) {
+            const clipIndex = trackWithClip.clips.findIndex(c => c.id === action.payload.clipId);
+            if (clipIndex !== -1) {
+              trackWithClip.clips[clipIndex] = {
+                ...trackWithClip.clips[clipIndex],
+                ...action.payload.clip
+              };
+            }
+          }
+        }
+        break;
+
+      case ActionTypes.REMOVE_CLIP:
+        {
+          const trackToRemoveClip = draft.tracks.find(t => t.id === action.payload.trackId);
+          if (trackToRemoveClip) {
+            trackToRemoveClip.clips = trackToRemoveClip.clips.filter(c => c.id !== action.payload.clipId);
+          }
+        }
+        break;
+
+      case ActionTypes.MOVE_CLIP:
+        {
+          const sourceTrack = draft.tracks.find(t => t.id === action.payload.sourceTrackId);
+          const targetTrack = draft.tracks.find(t => t.id === action.payload.targetTrackId);
+          if (sourceTrack && targetTrack) {
+            const clipToMove = sourceTrack.clips.find(c => c.id === action.payload.clipId);
+            if (clipToMove) {
+              const desiredStart = Math.max(0, action.payload.newTime);
+              const delta = desiredStart - clipToMove.startTime;
+              const newStartTime = clipToMove.startTime + delta;
+              const newEndTime = clipToMove.endTime + delta;
+              const updatedClip = {
+                ...clipToMove,
+                startTime: newStartTime,
+                endTime: newEndTime,
+                mediaOffset: clipToMove.mediaOffset + delta
+              };
+
+              if (sourceTrack.id === targetTrack.id) {
+                const clipIndex = sourceTrack.clips.findIndex(c => c.id === clipToMove.id);
+                if (clipIndex !== -1) {
+                  sourceTrack.clips[clipIndex] = updatedClip;
+                }
+              } else {
+                sourceTrack.clips = sourceTrack.clips.filter(c => c.id !== clipToMove.id);
+                targetTrack.clips.push(updatedClip);
+              }
+            }
+          }
+        }
+        break;
+
+      case ActionTypes.TRIM_CLIP:
+        {
+          for (const track of draft.tracks) {
+            const clipToTrim = track.clips.find(c => c.id === action.payload.clipId);
+            if (clipToTrim) {
+              const oldEndTime = clipToTrim.endTime;
+              // Determine new end time.
+              // Use full available duration from the reference media:
+              const maxEndTime = clipToTrim.startTime + clipToTrim.mediaDuration;
+              let newEndTime = action.payload.endTime !== undefined
+                ? Math.min(action.payload.endTime, maxEndTime)
+                : clipToTrim.endTime;
+
+              logger.debug('TRIM_CLIP action:', {
+                clipId: clipToTrim.id,
+                oldEndTime,
+                newEndTime,
+                maxEndTime,
+                ripple: action.payload.ripple,
+                mediaDuration: clipToTrim.mediaDuration,
+                startTime: clipToTrim.startTime
+              });
+
+              const clipIndex = track.clips.findIndex(c => c.id === clipToTrim.id);
+
+              // Update the clip being trimmed.
+              // Preserve the reference media in initialBounds.
+              track.clips[clipIndex] = {
+                ...clipToTrim,
+                endTime: newEndTime,
+                // If new handle positions are provided, use them; otherwise, default to the full range based on the reference.
+                handles: action.payload.handles || {
+                  startPosition: clipToTrim.mediaOffset,
+                  endPosition: clipToTrim.mediaOffset + clipToTrim.mediaDuration
+                }
+              };
+
+              // If ripple mode is enabled, shift subsequent clips accordingly.
+              if (action.payload.ripple) {
+                const deltaTime = newEndTime - oldEndTime;
+                const subsequentClips = track.clips
+                  .slice(clipIndex + 1)
+                  .filter(c => c.startTime >= oldEndTime);
+                subsequentClips.forEach((clipToMove) => {
+                  const idx = track.clips.findIndex(c => c.id === clipToMove.id);
+                  if (idx !== -1) {
+                    const duration = clipToMove.endTime - clipToMove.startTime;
+                    const newStart = clipToMove.startTime + deltaTime;
+                    track.clips[idx] = {
+                      ...clipToMove,
+                      startTime: newStart,
+                      endTime: newStart + duration,
+                      mediaOffset: clipToMove.mediaOffset + deltaTime
+                    };
+                  }
+                });
+                track.clips.sort((a, b) => a.startTime - b.startTime);
+              }
+            }
+          }
+        }
+        break;
+
+      case ActionTypes.SPLIT_CLIP:
+        {
+          const trackToSplit = draft.tracks.find(t => t.id === action.payload.trackId);
+          if (trackToSplit) {
+            const clipToSplit = trackToSplit.clips.find(c => c.id === action.payload.clipId);
+            if (clipToSplit && action.payload.time > clipToSplit.startTime && action.payload.time < clipToSplit.endTime) {
+              const splitPoint = action.payload.time;
+              const firstDuration = splitPoint - clipToSplit.startTime;
+              const secondDuration = clipToSplit.endTime - splitPoint;
+
+              // Use initialBounds as the reference for the source media.
+              const originalMediaOffset = clipToSplit.initialBounds?.mediaOffset ?? clipToSplit.mediaOffset;
+              const originalMediaDuration = clipToSplit.initialBounds?.mediaDuration ?? clipToSplit.mediaDuration;
+
+              // Create first clip.
+              const firstClip = {
+                ...clipToSplit,
+                id: `${clipToSplit.id}-1`,
+                endTime: splitPoint,
+                mediaDuration: firstDuration,
+                // Keep the original mediaOffset for the first clip.
+                handles: {
+                  startPosition: originalMediaOffset,
+                  endPosition: originalMediaOffset + firstDuration
+                },
+                // Preserve the reference media in initialBounds.
+                initialBounds: clipToSplit.initialBounds
+              };
+
+              // Create second clip.
+              const secondClip = {
+                ...clipToSplit,
+                id: `${clipToSplit.id}-2`,
+                startTime: splitPoint,
+                mediaOffset: originalMediaOffset + firstDuration,
+                mediaDuration: originalMediaDuration - firstDuration,
+                handles: {
+                  startPosition: originalMediaOffset + firstDuration,
+                  endPosition: originalMediaOffset + originalMediaDuration
+                },
+                initialBounds: clipToSplit.initialBounds
+              };
+
+              trackToSplit.clips = trackToSplit.clips.filter(c => c.id !== clipToSplit.id);
+              trackToSplit.clips.push(firstClip, secondClip);
+              trackToSplit.clips.sort((a, b) => a.startTime - b.startTime);
+              draft.selectedClipIds = [firstClip.id, secondClip.id];
+            }
+          }
+        }
+        break;
+
+      case ActionTypes.SELECT_CLIPS:
+        draft.selectedClipIds = action.payload.clipIds;
+        break;
+
+      case ActionTypes.SET_SELECTED_CLIP_IDS:
+        draft.selectedClipIds = action.payload;
+        break;
+
+      case ActionTypes.SET_SELECTED_TRACK_ID:
+        draft.selectedTrackId = action.payload;
+        break;
+    }
+
+    if (shouldCreateHistoryEntry) {
+      const diff = createStateDiff(beforeState, draft as TimelineState, historyDescription, isCheckpoint);
+      draft.history.entries.push(diff);
+      if (draft.history.entries.length > TimelineConstants.History.MAX_HISTORY_SIZE) {
+        draft.history.entries = draft.history.entries.slice(-TimelineConstants.History.MAX_HISTORY_SIZE);
+      }
+      draft.history.currentIndex = draft.history.entries.length - 1;
+    }
+  });
+};
+
+const getHistoryDescription = (action: TimelineAction): string => {
+  switch (action.type) {
+    case ActionTypes.ADD_TRACK:
+      return 'Add track';
+    case ActionTypes.REMOVE_TRACK:
+      return 'Remove track';
+    case ActionTypes.ADD_CLIP:
+      return 'Add clip';
+    case ActionTypes.REMOVE_CLIP:
+      return 'Remove clip';
+    case ActionTypes.MOVE_CLIP:
+      return 'Move clip';
+    case ActionTypes.SPLIT_CLIP:
+      return 'Split clip';
+    case ActionTypes.TRIM_CLIP:
+      return 'Trim clip';
+    case ActionTypes.SET_ZOOM:
+      return 'Change zoom';
+    case ActionTypes.SET_FPS:
+      return 'Change FPS';
+    default:
+      return action.type;
+  }
+};
+
+export const TimelineProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [state, dispatch] = useReducer(timelineReducer, initialTimelineState);
+  const [isInitialized, setIsInitialized] = React.useState(false);
+
+  useEffect(() => {
+    try {
+      const validationErrors = validateTimelineState(state);
+      (window as any).timelineState = { 
+        ...state,
+        dispatch 
+      };
+      (window as any).timelineDispatch = dispatch;
+      setIsInitialized(true);
+      (window as any).timelineReady = true;
+      const detail = {
+        state,
+        dispatch,
+        isValid: validationErrors.length === 0,
+        errors: validationErrors
+      };
+      window.dispatchEvent(new CustomEvent('timeline:initializing', { detail }));
+      requestAnimationFrame(() => {
+        window.dispatchEvent(new CustomEvent('timeline:initialized', { detail }));
+      });
+      logger.debug('[Timeline] Initialization complete:', detail);
+      return () => {
+        (window as any).timelineReady = false;
+        (window as any).timelineState = undefined;
+        (window as any).timelineDispatch = undefined;
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error('[Timeline] Initialization failed:', new Error(errorMessage));
+      window.dispatchEvent(new CustomEvent('timeline:error', { 
+        detail: { error: new Error(errorMessage), state } 
+      }));
+    }
+  }, [state, dispatch]);
+
+  return (
+    <TimelineContext.Provider value={{ state, dispatch }}>
+      {children}
+    </TimelineContext.Provider>
+  );
+};
+
+export const useTimelineContext = () => {
+  const context = useContext(TimelineContext);
+  if (!context) {
+    throw new Error('useTimelineContext must be used within a TimelineProvider');
+  }
+  return context;
+};
+
+
+================================================================================
+src/renderer/hooks/useTimeline.ts
+================================================================================
+
+import { useCallback } from 'react';
+import { useTimelineContext } from './useTimelineContext';
+import { ActionTypes, ClipWithLayer, Track } from '../types/timeline';
+import { logger } from '../utils/logger';
+
+export const useTimeline = () => {
+  const { state, dispatch } = useTimelineContext();
+
+  const updateClip = useCallback((trackId: string, clipId: string, updates: Partial<ClipWithLayer>) => {
+    dispatch({
+      type: ActionTypes.UPDATE_CLIP,
+      payload: {
+        trackId,
+        clipId,
+        clip: updates
+      }
+    });
+  }, [dispatch]);
+
+  const trimClip = useCallback((
+    clipId: string, 
+    startTime?: number, 
+    endTime?: number, 
+    speed = 1.0,
+    options?: {
+      handles?: {
+        startPosition: number;
+        endPosition: number;
+      };
+      ripple?: boolean;
+    }
+  ) => {
+    try {
+      // Find clip in tracks
+      let foundClip: ClipWithLayer | undefined;
+      let foundTrack: Track | undefined;
+
+      for (const track of state.tracks) {
+        const clip = track.clips.find((c: ClipWithLayer) => c.id === clipId);
+        if (clip) {
+          foundClip = clip;
+          foundTrack = track;
+          break;
+        }
+      }
+
+      if (!foundClip || !foundTrack) {
+        throw new Error(`Clip not found: ${clipId}`);
+      }
+
+      // Validate trim operation
+      if (startTime !== undefined && endTime !== undefined && startTime >= endTime) {
+        throw new Error('Invalid trim: start time must be less than end time');
+      }
+
+      // Dispatch trim action
+      dispatch({
+        type: ActionTypes.TRIM_CLIP,
+        payload: {
+          clipId,
+          startTime,
+          endTime,
+          speed,
+          handles: options?.handles,
+          ripple: options?.ripple
+        }
+      });
+
+      logger.debug('Trim clip:', {
+        clipId,
+        startTime,
+        endTime,
+        speed,
+        handles: options?.handles,
+        ripple: options?.ripple
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const customError = new Error(errorMessage);
+      (customError as any).clipId = clipId;
+      throw customError;
+    }
+  }, [state.tracks, dispatch]);
+
+  const moveClip = useCallback((
+    clipId: string,
+    sourceTrackId: string,
+    targetTrackId: string,
+    newTime: number
+  ) => {
+    dispatch({
+      type: ActionTypes.MOVE_CLIP,
+      payload: {
+        clipId,
+        sourceTrackId,
+        targetTrackId,
+        newTime
+      }
+    });
+  }, [dispatch]);
+
+  const splitClip = useCallback((trackId: string, clipId: string, time: number) => {
+    dispatch({
+      type: ActionTypes.SPLIT_CLIP,
+      payload: {
+        trackId,
+        clipId,
+        time
+      }
+    });
+  }, [dispatch]);
+
+  const addTrack = useCallback((track: Track) => {
+    dispatch({
+      type: ActionTypes.ADD_TRACK,
+      payload: {
+        track
+      }
+    });
+  }, [dispatch]);
+
+  const removeTrack = useCallback((trackId: string) => {
+    dispatch({
+      type: ActionTypes.REMOVE_TRACK,
+      payload: {
+        trackId
+      }
+    });
+  }, [dispatch]);
+
+  const updateTrack = useCallback((trackId: string, updates: Partial<Track>) => {
+    dispatch({
+      type: ActionTypes.UPDATE_TRACK,
+      payload: {
+        trackId,
+        track: updates
+      }
+    });
+  }, [dispatch]);
+
+  const addClip = useCallback((trackId: string, clip: ClipWithLayer) => {
+    dispatch({
+      type: ActionTypes.ADD_CLIP,
+      payload: {
+        trackId,
+        clip
+      }
+    });
+  }, [dispatch]);
+
+  const removeClip = useCallback((trackId: string, clipId: string) => {
+    dispatch({
+      type: ActionTypes.REMOVE_CLIP,
+      payload: {
+        trackId,
+        clipId
+      }
+    });
+  }, [dispatch]);
+
+  const setDuration = useCallback((duration: number) => {
+    dispatch({
+      type: ActionTypes.SET_DURATION,
+      payload: duration
+    });
+  }, [dispatch]);
+
+  const setCurrentTime = useCallback((time: number) => {
+    dispatch({
+      type: ActionTypes.SET_CURRENT_TIME,
+      payload: {
+        time
+      }
+    });
+  }, [dispatch]);
+
+  const setPlaying = useCallback((isPlaying: boolean) => {
+    dispatch({
+      type: ActionTypes.SET_PLAYING,
+      payload: isPlaying
+    });
+  }, [dispatch]);
+
+  const setZoom = useCallback((zoom: number) => {
+    dispatch({
+      type: ActionTypes.SET_ZOOM,
+      payload: zoom
+    });
+  }, [dispatch]);
+
+  const setFps = useCallback((fps: number) => {
+    dispatch({
+      type: ActionTypes.SET_FPS,
+      payload: fps
+    });
+  }, [dispatch]);
+
+  const setScrollX = useCallback((scrollX: number) => {
+    dispatch({
+      type: ActionTypes.SET_SCROLL_X,
+      payload: scrollX
+    });
+  }, [dispatch]);
+
+  const setScrollY = useCallback((scrollY: number) => {
+    dispatch({
+      type: ActionTypes.SET_SCROLL_Y,
+      payload: scrollY
+    });
+  }, [dispatch]);
+
+  const setDragging = useCallback((isDragging: boolean, dragStartX: number, dragStartY: number) => {
+    dispatch({
+      type: ActionTypes.SET_DRAGGING,
+      payload: {
+        isDragging,
+        dragStartX,
+        dragStartY
+      }
+    });
+  }, [dispatch]);
+
+  const setError = useCallback((error: Error | null) => {
+    dispatch({
+      type: ActionTypes.SET_ERROR,
+      payload: error
+    });
+  }, [dispatch]);
+
+  return {
+    updateClip,
+    trimClip,
+    moveClip,
+    splitClip,
+    addTrack,
+    removeTrack,
+    updateTrack,
+    addClip,
+    removeClip,
+    setDuration,
+    setCurrentTime,
+    setPlaying,
+    setZoom,
+    setFps,
+    setScrollX,
+    setScrollY,
+    setDragging,
+    setError,
+    duration: state.duration,
+    currentTime: state.currentTime,
+    isPlaying: state.isPlaying,
+    zoom: state.zoom,
+    fps: state.fps,
+    scrollX: state.scrollX,
+    scrollY: state.scrollY,
+    isDragging: state.isDragging,
+    dragStartX: state.dragStartX,
+    dragStartY: state.dragStartY,
+    error: state.error
+  };
+};
+
+
+================================================================================
+src/renderer/hooks/useTimelineCoordinates.ts
+================================================================================
+
+import { useCallback, RefObject } from 'react';
+import { useTimelineContext } from './useTimelineContext';
+import { clampTime } from '../utils/timeValidation';
+import { timeToPixels, pixelsToTime } from '../utils/timelineScale';
+import { TimelineConstants } from '../utils/timelineConstants';
+import { logger } from '../utils/logger';
+
+interface Coordinates {
+  x: number;
+  y: number;
+}
+
+interface ContainerInfo {
+  rect: {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  };
+  scroll: {
+    left: number;
+    top: number;
+  };
+}
+
+export const useTimelineCoordinates = (containerRef: RefObject<HTMLElement>) => {
+  const { state } = useTimelineContext();
+
+  /**
+   * Get container's position and scroll information
+   */
+  const getContainerInfo = useCallback((): ContainerInfo => {
+    if (!containerRef.current) {
+      return {
+        rect: { left: 0, top: 0, width: 0, height: 0 },
+        scroll: { left: 0, top: 0 }
+      };
+    }
+
+    const domRect = containerRef.current.getBoundingClientRect();
+    return {
+      rect: {
+        left: domRect.left,
+        top: domRect.top,
+        width: domRect.width,
+        height: domRect.height
+      },
+      scroll: {
+        left: containerRef.current.scrollLeft,
+        top: containerRef.current.scrollTop
+      }
+    };
+  }, []);
+
+  /**
+   * Convert client coordinates to timeline time
+   */
+  const clientToTime = useCallback((clientCoords: Coordinates): number => {
+    const { rect, scroll } = getContainerInfo();
+    
+    // Calculate position relative to container, including scroll
+    const relativeX = clientCoords.x - rect.left + scroll.left;
+    const timeX = Math.max(0, relativeX - 160); // Subtract track label width after calculating relative position
+    
+    // Convert to time using scale utilities
+    const time = pixelsToTime(timeX, state.zoom);
+
+    // Clamp to valid range
+    const clampedTime = clampTime(time, {
+      minValue: 0,
+      maxValue: state.duration,
+      snapToFrames: true,
+      fps: state.fps
+    });
+
+
+    logger.debug('Client to time conversion:', {
+      clientX: clientCoords.x,
+      containerLeft: rect.left,
+      scrollLeft: scroll.left,
+      relativeX,
+      timeX,
+      time,
+      clampedTime,
+      zoom: state.zoom,
+      scale: TimelineConstants.Scale.getScale(state.zoom)
+    });
+
+    return clampedTime;
+  }, [state.zoom, state.duration, state.fps]);
+
+  /**
+   * Convert timeline time to client coordinates
+   */
+  const timeToClient = useCallback((time: number): Coordinates => {
+    const { rect, scroll } = getContainerInfo();
+    
+    // Convert time to container-relative position using scale utilities
+    const relativeX = timeToPixels(time, state.zoom);
+    
+    // Convert to client coordinates
+    const clientX = relativeX + rect.left - scroll.left + 160; // Add track label width after calculating position
+
+    logger.debug('Time to client conversion:', {
+      time,
+      relativeX,
+      containerLeft: rect.left,
+      scrollLeft: scroll.left,
+      clientX,
+      zoom: state.zoom,
+      scale: TimelineConstants.Scale.getScale(state.zoom)
+    });
+
+    return {
+      x: clientX,
+      y: rect.top
+    };
+  }, [state.zoom]);
+
+  /**
+   * Get relative coordinates within the container
+   */
+  const getRelativeCoordinates = useCallback((clientCoords: Coordinates): Coordinates => {
+    const { rect, scroll } = getContainerInfo();
+    
+    return {
+      x: clientCoords.x - rect.left + scroll.left,
+      y: clientCoords.y - rect.top + scroll.top
+    };
+  }, []);
+
+  /**
+   * Check if coordinates are within the container
+   */
+  const isWithinContainer = useCallback((clientCoords: Coordinates): boolean => {
+    const { rect } = getContainerInfo();
+    
+    return (
+      clientCoords.x >= rect.left &&
+      clientCoords.x <= rect.left + rect.width &&
+      clientCoords.y >= rect.top &&
+      clientCoords.y <= rect.top + rect.height
+    );
+  }, []);
+
+  /**
+   * Get container dimensions and position
+   */
+  const getContainerDimensions = useCallback(() => {
+    const { rect, scroll } = getContainerInfo();
+    
+    return {
+      width: rect.width,
+      height: rect.height,
+      left: rect.left,
+      top: rect.top,
+      scrollLeft: scroll.left,
+      scrollTop: scroll.top
+    };
+  }, []);
+
+  return {
+    clientToTime,
+    timeToClient,
+    getRelativeCoordinates,
+    isWithinContainer,
+    getContainerDimensions
+  };
+};
+
+
+================================================================================
+src/renderer/utils/timelineScale.ts
+================================================================================
+
+import { TimelineConstants } from './timelineConstants';
+
+/**
+ * Timeline scale utilities for consistent coordinate/time conversions
+ */
+
+/**
+ * Convert time to pixels based on zoom level
+ */
+export const timeToPixels = (time: number, zoom: number): number => {
+  return time * TimelineConstants.Scale.PIXELS_PER_SECOND * zoom;
+};
+
+/**
+ * Convert pixels to time based on zoom level
+ */
+export const pixelsToTime = (pixels: number, zoom: number): number => {
+  return pixels / (TimelineConstants.Scale.PIXELS_PER_SECOND * zoom);
+};
+
+/**
+ * Get current pixels per second based on zoom level
+ */
+export const getPixelsPerSecond = (zoom: number): number => {
+  return TimelineConstants.Scale.getScale(zoom);
+};
+
+/**
+ * Get current pixels per frame based on zoom level and fps
+ */
+export const getPixelsPerFrame = (zoom: number, fps: number): number => {
+  return TimelineConstants.Scale.getScale(zoom) / fps;
+};
+
+/**
+ * Calculate minimum zoom level to fit duration in width
+ */
+export const getMinZoomLevel = (duration: number, width: number): number => {
+  return Math.max(
+    width / (duration * TimelineConstants.Scale.PIXELS_PER_SECOND),
+    TimelineConstants.Scale.MIN_ZOOM
+  );
+};
+
+/**
+ * Calculate visible duration at current zoom level and width
+ */
+export const getVisibleDuration = (width: number, zoom: number): number => {
+  return width / TimelineConstants.Scale.getScale(zoom);
+};
+
+/**
+ * Calculate content width for duration at zoom level
+ */
+export const getContentWidth = (duration: number, zoom: number): number => {
+  return duration * TimelineConstants.Scale.getScale(zoom);
+};
+
+/**
+ * Calculate minimum width needed to display duration at zoom level
+ */
+export const getMinWidth = (duration: number, zoom: number): number => {
+  return Math.max(
+    duration * TimelineConstants.Scale.getScale(zoom),
+    TimelineConstants.UI.MIN_TRACK_WIDTH
+  );
+};
+
+/**
+ * Calculate optimal zoom level for a given duration and width
+ * with optional padding factor (1.0 = no padding, 1.1 = 10% padding)
+ */
+export const getOptimalZoom = (duration: number, width: number, padding: number = 1.0): number => {
+  const zoom = (width / (duration * TimelineConstants.Scale.PIXELS_PER_SECOND)) / padding;
+  return Math.min(
+    Math.max(zoom, TimelineConstants.Scale.MIN_ZOOM),
+    TimelineConstants.Scale.MAX_ZOOM
+  );
+};
+
+/**
+ * Clamp zoom level to valid range
+ */
+export const clampZoom = (zoom: number): number => {
+  return Math.min(
+    Math.max(zoom, TimelineConstants.Scale.MIN_ZOOM),
+    TimelineConstants.Scale.MAX_ZOOM
+  );
+};
+
+
+================================================================================
+src/renderer/utils/timelineValidation.ts
+================================================================================
+
+import { TimelineState } from '../types/timeline';
+
+/**
+ * Validates the timeline state structure and returns any validation errors
+ */
+export function validateTimelineState(state: TimelineState): string[] {
+  const errors: string[] = [];
+
+  // Check required properties
+  if (!state) {
+    errors.push('Timeline state is undefined');
+    return errors;
+  }
+
+  // Check tracks array
+  if (!Array.isArray(state.tracks)) {
+    errors.push('Tracks must be an array');
+  } else {
+    // Validate each track
+    state.tracks.forEach((track, index) => {
+      if (!track.id) {
+        errors.push(`Track at index ${index} is missing id`);
+      }
+      if (!track.name) {
+        errors.push(`Track at index ${index} is missing name`);
+      }
+      if (!track.type) {
+        errors.push(`Track at index ${index} is missing type`);
+      }
+      if (!Array.isArray(track.clips)) {
+        errors.push(`Track at index ${index} clips must be an array`);
+      }
+    });
+  }
+
+  // Check numeric properties
+  if (typeof state.currentTime !== 'number') {
+    errors.push('currentTime must be a number');
+  }
+  if (typeof state.duration !== 'number') {
+    errors.push('duration must be a number');
+  }
+  if (typeof state.zoom !== 'number') {
+    errors.push('zoom must be a number');
+  }
+  if (typeof state.fps !== 'number') {
+    errors.push('fps must be a number');
+  }
+  if (typeof state.scrollX !== 'number') {
+    errors.push('scrollX must be a number');
+  }
+  if (typeof state.scrollY !== 'number') {
+    errors.push('scrollY must be a number');
+  }
+
+  // Check boolean properties
+  if (typeof state.isPlaying !== 'boolean') {
+    errors.push('isPlaying must be a boolean');
+  }
+  if (typeof state.isDragging !== 'boolean') {
+    errors.push('isDragging must be a boolean');
+  }
+
+  // Check arrays
+  if (!Array.isArray(state.selectedClipIds)) {
+    errors.push('selectedClipIds must be an array');
+  }
+  if (!Array.isArray(state.selectedCaptionIds)) {
+    errors.push('selectedCaptionIds must be an array');
+  }
+  if (!Array.isArray(state.markers)) {
+    errors.push('markers must be an array');
+  }
+
+  // Check history
+  if (!state.history) {
+    errors.push('history is missing');
+  } else {
+    if (!Array.isArray(state.history.entries)) {
+      errors.push('history.entries must be an array');
+    }
+    if (typeof state.history.currentIndex !== 'number') {
+      errors.push('history.currentIndex must be a number');
+    }
+  }
+
+  return errors;
+}
+
+
+================================================================================
+src/renderer/utils/timelineConstants.ts
+================================================================================
+
+/**
+ * Timeline constants and configuration
+ */
+
+// Scale and zoom constants
+export const PIXELS_PER_SECOND = 100; // Base scale at zoom level 1.0
+export const MIN_ZOOM = 0.1;
+export const MAX_ZOOM = 10;
+export const DEFAULT_ZOOM = 1;
+
+// Time formatting defaults
+export const DEFAULT_FPS = 30;
+export const DEFAULT_TIME_FORMAT = 'standard' as const;
+export const DEFAULT_TIME_OPTIONS = {
+  fps: DEFAULT_FPS,
+  showFrames: true,
+  showMilliseconds: false,
+  padHours: false,
+  compact: false,
+  format: DEFAULT_TIME_FORMAT
+} as const;
+
+// Clip duration handling
+export const getDuration = (startTime: number, endTime: number): number => {
+  return endTime - startTime;
+};
+
+export const getEndTime = (startTime: number, duration: number): number => {
+  return startTime + duration;
+};
+
+// Scale conversion helpers
+export const getScale = (zoom: number): number => {
+  return PIXELS_PER_SECOND * zoom;
+};
+
+export const getZoom = (scale: number): number => {
+  return scale / PIXELS_PER_SECOND;
+};
+
+// Frame conversion constants
+export const FRAME_RATE_OPTIONS = [
+  23.976,
+  24,
+  25,
+  29.97,
+  30,
+  50,
+  59.94,
+  60
+] as const;
+
+// Snap point thresholds
+export const SNAP_THRESHOLD = 5; // pixels
+export const MIN_FRAME_SNAP_SPACING = 10; // minimum pixels between frame snap points
+export const MAX_FRAME_SNAP_ZOOM = 4; // maximum zoom level for frame snapping
+
+// Virtual scroll constants
+export const VIRTUAL_SCROLL_BUFFER = 2.0; // buffer multiplier for virtual scrolling
+export const MIN_CLIP_WIDTH = 10; // minimum width in pixels to render a clip
+export const MAX_VISIBLE_CLIPS = 1000; // maximum number of clips to render at once
+
+// History constants
+export const MAX_HISTORY_SIZE = 100; // maximum number of history entries
+
+// Performance constants
+export const SCROLL_THROTTLE = 16; // ms (~ 1 frame at 60fps)
+export const PLAYBACK_UPDATE_INTERVAL = 16; // ms
+export const WAVEFORM_RESOLUTION = 2048; // samples per waveform chunk
+
+// UI constants
+export const TRACK_HEIGHT = 60; // pixels
+export const HEADER_HEIGHT = 40; // pixels
+export const RULER_HEIGHT = 30; // pixels
+export const MIN_TRACK_WIDTH = 800; // pixels
+export const MAX_TRACK_LENGTH = 7200; // seconds (2 hours)
+
+// Layer constants
+export const MAX_LAYERS = 10; // maximum number of layers per track
+export const MIN_LAYER_HEIGHT = 60; // minimum height for a layer
+export const LAYER_SPACING = 2; // pixels between layers
+
+// Transition constants
+export const MIN_TRANSITION_DURATION = 0.5; // seconds
+export const MAX_TRANSITION_DURATION = 5.0; // seconds
+export const DEFAULT_TRANSITION_DURATION = 1.0; // seconds
+export const TRANSITION_HANDLE_SIZE = 10; // pixels
+
+// Effect constants
+export const MAX_EFFECTS_PER_CLIP = 10;
+export const EFFECT_PREVIEW_RESOLUTION = 0.5; // 50% resolution for effect previews
+
+// Waveform constants
+export const WAVEFORM_HEIGHT = 30; // pixels
+export const WAVEFORM_COLOR = '#4a9eff';
+export const WAVEFORM_BACKGROUND = '#2a2a2a';
+export const WAVEFORM_CHUNK_SIZE = 1024; // samples per chunk for streaming
+export const WAVEFORM_MAX_CHUNKS = 100; // maximum chunks to keep in memory
+
+// Render quality settings
+export const RENDER_QUALITY = {
+  draft: {
+    resolution: 0.5,
+    effects: false,
+    transitions: false
+  },
+  preview: {
+    resolution: 0.75,
+    effects: true,
+    transitions: true
+  },
+  full: {
+    resolution: 1.0,
+    effects: true,
+    transitions: true
+  }
+} as const;
+
+// Export these grouped constants for easier imports
+export const TimelineConstants = {
+  Scale: {
+    PIXELS_PER_SECOND: 100,
+    MIN_ZOOM: 0.1,
+    MAX_ZOOM: 10,
+    DEFAULT_ZOOM: 1,
+    getScale: (zoom: number) => zoom * TimelineConstants.Scale.PIXELS_PER_SECOND,
+    getZoom: (scale: number) => scale / TimelineConstants.Scale.PIXELS_PER_SECOND
+  },
+  MIN_DURATION: 0.1, // Minimum clip duration in seconds
+  MAX_CLIP_DURATION: 1800.0, // Maximum clip duration in seconds (30 minutes)
+  Time: {
+    DEFAULT_FPS,
+    DEFAULT_TIME_FORMAT,
+    DEFAULT_TIME_OPTIONS,
+    FRAME_RATE_OPTIONS,
+    getDuration,
+    getEndTime
+  },
+  Snapping: {
+    SNAP_THRESHOLD,
+    MIN_FRAME_SNAP_SPACING,
+    MAX_FRAME_SNAP_ZOOM
+  },
+  VirtualScroll: {
+    VIRTUAL_SCROLL_BUFFER,
+    MIN_CLIP_WIDTH,
+    MAX_VISIBLE_CLIPS
+  },
+  History: {
+    MAX_HISTORY_SIZE
+  },
+  Performance: {
+    SCROLL_THROTTLE,
+    PLAYBACK_UPDATE_INTERVAL,
+    WAVEFORM_RESOLUTION
+  },
+  UI: {
+    TRACK_HEIGHT,
+    HEADER_HEIGHT,
+    RULER_HEIGHT,
+    MIN_TRACK_WIDTH,
+    MAX_TRACK_LENGTH
+  },
+  Layers: {
+    MAX_LAYERS,
+    MIN_LAYER_HEIGHT,
+    LAYER_SPACING
+  },
+  Transitions: {
+    MIN_DURATION: MIN_TRANSITION_DURATION,
+    MAX_DURATION: MAX_TRANSITION_DURATION,
+    DEFAULT_DURATION: DEFAULT_TRANSITION_DURATION,
+    HANDLE_SIZE: TRANSITION_HANDLE_SIZE
+  },
+  Effects: {
+    MAX_PER_CLIP: MAX_EFFECTS_PER_CLIP,
+    PREVIEW_RESOLUTION: EFFECT_PREVIEW_RESOLUTION
+  },
+  Waveform: {
+    HEIGHT: WAVEFORM_HEIGHT,
+    COLOR: WAVEFORM_COLOR,
+    BACKGROUND: WAVEFORM_BACKGROUND,
+    CHUNK_SIZE: WAVEFORM_CHUNK_SIZE,
+    MAX_CHUNKS: WAVEFORM_MAX_CHUNKS
+  },
+  RenderQuality: RENDER_QUALITY
+} as const;
+
+
+================================================================================
+src/renderer/types/timeline.ts
+================================================================================
+
+import { StateDiff } from '../utils/historyDiff';
+
+export type Effect = {
+  id: string;
+  type: string;
+  parameters: Record<string, any>;
+  enabled?: boolean;
+  startTime?: number;
+  endTime?: number;
+  keyframes?: {
+    time: number;
+    value: any;
+  }[];
+};
+
+export type Transition = {
+  id: string;
+  type: string;
+  duration: number;
+  params: Record<string, any>;
+  keyframes?: {
+    time: number;
+    value: any;
+  }[];
+};
+
+export type Layer = {
+  id: string;
+  index: number;
+  visible: boolean;
+  locked: boolean;
+};
+
+export type WaveformData = {
+  peaks: number[];
+  resolution: number;
+  sampleRate: number;
+  loaded: boolean;
+  error?: string;
+};
+
+export type VideoClip = {
+  id: string;
+  type: 'video';
+  name: string;
+  startTime: number;
+  endTime: number;
+  src: string;
+  originalDuration?: number;
+  initialDuration?: number;
+  maxDuration?: number;
+  initialBounds?: {
+    startTime: number;
+    endTime: number;
+    mediaOffset: number;
+    mediaDuration: number;
+  };
+  handles?: {
+    startPosition: number;
+    endPosition: number;
+  };
+  effects: Effect[];
+  thumbnail?: string;
+  mediaOffset: number;
+  mediaDuration: number;
+  layer?: number;
+  transition?: {
+    in?: Transition;
+    out?: Transition;
+  };
+  transform?: {
+    scale: number;
+    rotation: number;
+    position: { x: number; y: number };
+    opacity: number;
+  };
+};
+
+export type AudioClip = {
+  id: string;
+  type: 'audio';
+  name: string;
+  startTime: number;
+  endTime: number;
+  src: string;
+  originalDuration: number;
+  initialDuration?: number;
+  maxDuration?: number;
+  initialBounds?: {
+    startTime: number;
+    endTime: number;
+    mediaOffset: number;
+    mediaDuration: number;
+  };
+  handles?: {
+    startPosition: number;
+    endPosition: number;
+  };
+  effects: Effect[];
+  mediaOffset: number;
+  mediaDuration: number;
+  volume?: number;
+  isMuted?: boolean;
+  waveform?: WaveformData;
+  layer?: number;
+  transition?: {
+    in?: Transition;
+    out?: Transition;
+  };
+};
+
+export type CaptionClip = {
+  id: string;
+  type: 'caption';
+  name: string;
+  startTime: number;
+  endTime: number;
+  text: string;
+  effects: Effect[];
+  captions?: Caption[];
+  speakerStyles?: {
+    color?: string;
+    fontSize?: number;
+    fontFamily?: string;
+    speakers?: Record<string, Speaker>;
+  };
+  layer?: number;
+  mediaOffset: number;
+  mediaDuration: number;
+  originalDuration: number;
+  initialDuration?: number;
+  maxDuration?: number;
+  initialBounds?: {
+    startTime: number;
+    endTime: number;
+    mediaOffset: number;
+    mediaDuration: number;
+  };
+  handles?: {
+    startPosition: number;
+    endPosition: number;
+  };
+};
+
+export type Clip = VideoClip | AudioClip | CaptionClip;
+export type ClipWithLayer = Clip & { layer: number };
+export type ProductionClip = VideoClip | AudioClip | CaptionClip;
+
+// Action creator for updating clip transform
+export const createUpdateClipTransformAction = (clipId: string, transform: {
+  scale?: number;
+  rotation?: number;
+  position?: { x: number; y: number };
+  opacity?: number;
+}): TimelineAction => ({
+  type: ActionTypes.UPDATE_CLIP,
+  payload: {
+    clipId,
+    clip: { transform }
+  }
+});
+
+export type TrackType = 'video' | 'audio' | 'caption';
+
+export type Track = {
+  id: string;
+  name: string;
+  type: TrackType;
+  clips: ClipWithLayer[];
+  isLocked?: boolean;
+  isVisible?: boolean;
+  isMuted?: boolean;
+  layers?: Layer[];
+  allowOverlap?: boolean;
+  height?: number;
+  color?: string;
+  isEditing?: boolean;
+  transitions?: TrackTransition[];
+};
+
+export type Speaker = {
+  id: string;
+  name: string;
+  color: string;
+  avatar?: string;
+};
+
+export type Caption = {
+  id: string;
+  text: string;
+  start: number;
+  end: number;
+  startTime?: number;
+  endTime?: number;
+  speakerId?: string;
+  conf?: number;
+};
+
+export type TrackTransition = {
+  id: string;
+  type: string;
+  clipAId: string;
+  clipBId: string;
+  duration: number;
+};
+
+export type Marker = {
+  id: string;
+  time: number;
+  label: string;
+  color?: string;
+  type?: string;
+};
+
+export type TimelineMarker = {
+  id: string;
+  time: number;
+  label: string;
+  type: string;
+  color?: string;
+};
+
+export type SnapPoint = {
+  time: number;
+  type: 'clip-start' | 'clip-end' | 'playhead' | 'marker';
+  source: string;
+};
+
+export type ClipEffect = {
+  id: string;
+  type: string;
+  parameters: Record<string, any>;
+  keyframes?: Array<{
+    time: number;
+    value: any;
+  }>;
+};
+
+export interface CaptionStyle {
+  color?: string;
+  fontSize?: number;
+  fontFamily?: string;
+  backgroundColor?: string;
+  textAlign?: 'left' | 'center' | 'right';
+  speakers?: Record<string, Speaker>;
+}
+
+export type TimelineState = {
+  tracks: Track[];
+  currentTime: number;
+  duration: number;
+  zoom: number;
+  fps: number;
+  isPlaying: boolean;
+  isDragging: boolean;
+  scrollX: number;
+  scrollY: number;
+  scrollLeft: number;
+  selectedClipIds: string[];
+  selectedCaptionIds: string[];
+  selectedTrackId?: string;
+  markers: Marker[];
+  dragStartX?: number;
+  dragStartY?: number;
+  error?: string;
+  history: {
+    entries: StateDiff[];
+    currentIndex: number;
+  };
+  aspectRatio?: string;
+  snapToGrid?: boolean;
+  gridSize?: number;
+  showWaveforms?: boolean;
+  showKeyframes?: boolean;
+  showTransitions?: boolean;
+  showEffects?: boolean;
+  renderQuality?: 'draft' | 'preview' | 'full';
+  isSnappingEnabled: boolean;
+};
+
+export const ActionTypes = {
+  // Timeline state
+  SET_STATE: 'SET_STATE',
+  SET_CURRENT_TIME: 'SET_CURRENT_TIME',
+  SET_DURATION: 'SET_DURATION',
+  SET_ZOOM: 'SET_ZOOM',
+  SET_FPS: 'SET_FPS',
+  SET_IS_PLAYING: 'SET_IS_PLAYING',
+  SET_IS_DRAGGING: 'SET_IS_DRAGGING',
+  SET_SCROLL_X: 'SET_SCROLL_X',
+  SET_SCROLL_Y: 'SET_SCROLL_Y',
+  SET_ERROR: 'SET_ERROR',
+  SET_SNAPPING: 'SET_SNAPPING',
+
+  // Selection
+  SET_SELECTED_CLIP_IDS: 'SET_SELECTED_CLIP_IDS',
+  SET_SELECTED_TRACK_ID: 'SET_SELECTED_TRACK_ID',
+  SELECT_TRACK: 'SELECT_TRACK',
+  SELECT_CLIPS: 'SELECT_CLIPS',
+  SELECT_CAPTIONS: 'SELECT_CAPTIONS',
+
+  // Tracks
+  SET_TRACKS: 'SET_TRACKS',
+  ADD_TRACK: 'ADD_TRACK',
+  UPDATE_TRACK: 'UPDATE_TRACK',
+  REMOVE_TRACK: 'REMOVE_TRACK',
+  MOVE_TRACK: 'MOVE_TRACK',
+
+  // Clips
+  ADD_CLIP: 'ADD_CLIP',
+  UPDATE_CLIP: 'UPDATE_CLIP',
+  REMOVE_CLIP: 'REMOVE_CLIP',
+  MOVE_CLIP: 'MOVE_CLIP',
+  SPLIT_CLIP: 'SPLIT_CLIP',
+  TRIM_CLIP: 'TRIM_CLIP',
+
+  // Effects and Transitions
+  ADD_EFFECT: 'ADD_EFFECT',
+  UPDATE_EFFECT: 'UPDATE_EFFECT',
+  REMOVE_EFFECT: 'REMOVE_EFFECT',
+  ADD_TRANSITION: 'ADD_TRANSITION',
+  UPDATE_TRANSITION: 'UPDATE_TRANSITION',
+  REMOVE_TRANSITION: 'REMOVE_TRANSITION',
+
+  // Markers
+  SET_MARKERS: 'SET_MARKERS',
+  ADD_MARKER: 'ADD_MARKER',
+  UPDATE_MARKER: 'UPDATE_MARKER',
+  REMOVE_MARKER: 'REMOVE_MARKER',
+
+  // History
+  PUSH_HISTORY: 'PUSH_HISTORY',
+  SET_HISTORY_INDEX: 'SET_HISTORY_INDEX',
+  CLEAR_HISTORY: 'CLEAR_HISTORY',
+  UNDO: 'UNDO',
+  REDO: 'REDO',
+  RESTORE_SNAPSHOT: 'RESTORE_SNAPSHOT',
+
+  // UI State
+  SET_PLAYING: 'SET_PLAYING',
+  SET_DRAGGING: 'SET_DRAGGING',
+  SET_SHOW_WAVEFORMS: 'SET_SHOW_WAVEFORMS',
+  SET_SHOW_KEYFRAMES: 'SET_SHOW_KEYFRAMES',
+  SET_SHOW_TRANSITIONS: 'SET_SHOW_TRANSITIONS',
+  SET_SHOW_EFFECTS: 'SET_SHOW_EFFECTS',
+  SET_RENDER_QUALITY: 'SET_RENDER_QUALITY',
+  UPDATE_CAPTION_STYLES: 'UPDATE_CAPTION_STYLES'
+} as const;
+
+export type ActionTypes = typeof ActionTypes[keyof typeof ActionTypes];
+
+export type TimelineAction = {
+  type: ActionTypes;
+  payload?: any & {
+    ripple?: boolean;
+    handles?: {
+      startPosition: number;
+      endPosition: number;
+    };
+  };
+};
+
+export type TrimOptions = {
+  ripple?: boolean;
+  handles?: {
+    startPosition: number;
+    endPosition: number;
+  };
+};
+
+export type TimelineContextType = {
+  state: TimelineState;
+  dispatch: (action: TimelineAction) => void;
+};
+
+// Re-export TimelineContextType as TimelineContextValue for backward compatibility
+export type TimelineContextValue = TimelineContextType;
+
+export const isVideoClip = (clip: Clip): clip is VideoClip => clip.type === 'video';
+export const isAudioClip = (clip: Clip): clip is AudioClip => clip.type === 'audio';
+export const isCaptionClip = (clip: Clip): clip is CaptionClip => clip.type === 'caption';
+export const isMediaClip = (clip: Clip): clip is VideoClip | AudioClip | CaptionClip =>
+  clip.type === 'video' || clip.type === 'audio' || clip.type === 'caption';
+
+export const getMediaBounds = (clip: Clip): { offset: number; duration: number } => ({
+  offset: clip.mediaOffset,
+  duration: clip.mediaDuration
+});
+
+export const initialTimelineState: TimelineState = {
+  tracks: [],
+  currentTime: 0,
+  duration: 0,
+  zoom: 1,
+  fps: 30,
+  isPlaying: false,
+  isDragging: false,
+  scrollX: 0,
+  scrollY: 0,
+  scrollLeft: 0,
+  selectedClipIds: [],
+  selectedCaptionIds: [],
+  selectedTrackId: undefined,
+  markers: [],
+  dragStartX: undefined,
+  dragStartY: undefined,
+  error: undefined,
+  history: {
+    entries: [],
+    currentIndex: -1
+  },
+  aspectRatio: '16:9',
+  snapToGrid: true,
+  gridSize: 10,
+  showWaveforms: true,
+  showKeyframes: true,
+  showTransitions: true,
+  showEffects: true,
+  renderQuality: 'preview',
+  isSnappingEnabled: true
+};
+
+export const createClip = (type: 'video' | 'audio' | 'caption', props: any): Clip => {
+  const duration = props.endTime - props.startTime;
+  const mediaDuration = props.mediaDuration || duration;
+  const initialDuration = props.initialDuration || duration;
+  const mediaOffset = props.mediaOffset || 0;
+  const baseClip = {
+    id: props.id || `clip-${Date.now()}`,
+    name: props.name || 'Untitled Clip',
+    startTime: props.startTime,
+    endTime: props.endTime,
+    mediaOffset,
+    mediaDuration,
+    originalDuration: props.originalDuration || mediaDuration,
+    initialDuration,
+    maxDuration: initialDuration,
+    initialBounds: {
+      startTime: props.startTime,
+      endTime: props.endTime,
+      mediaOffset,
+      mediaDuration
+    },
+    handles: {
+      startPosition: mediaOffset,
+      endPosition: mediaOffset + (props.endTime - props.startTime)
+    },
+    effects: props.effects || []
+  };
+
+  switch (type) {
+    case 'video':
+      return {
+        ...baseClip,
+        type: 'video',
+        src: props.src || '',
+        transform: props.transform || {
+          scale: 1,
+          rotation: 0,
+          position: { x: 0, y: 0 },
+          opacity: 1
+        }
+      };
+    case 'audio':
+      return {
+        ...baseClip,
+        type: 'audio',
+        src: props.src || '',
+        volume: props.volume || 1,
+        isMuted: props.isMuted || false
+      };
+    case 'caption':
+      return {
+        ...baseClip,
+        type: 'caption',
+        text: props.text || '',
+        captions: props.captions || []
+      };
+    default:
+      throw new Error(`Unsupported clip type: ${type}`);
+  }
+};
+
+

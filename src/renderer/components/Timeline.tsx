@@ -1,0 +1,338 @@
+import React, { useCallback, useRef, useEffect, useState, memo } from 'react';
+import { TimelineTracks } from './TimelineTracks';
+import { TimelineRuler } from './TimelineRuler';
+import { TimelinePlayhead } from './TimelinePlayhead';
+import { useTimelineContext } from '../hooks/useTimelineContext';
+import { useTimelineViewport } from '../hooks/useTimelineViewport';
+import { throttle, THROTTLE } from '../utils/throttle';
+import { ActionTypes, Track, isMediaClip, ClipWithLayer, Clip } from '../types/timeline';
+import { logger } from '../utils/logger';
+
+interface TimelineProps {
+  containerWidth: number;
+  scrollLeft: number;
+  onScroll: (scrollLeft: number, scrollTop: number) => void;
+  onTimeUpdate: (time: number) => void;
+}
+
+const RULER_HEIGHT = 30;
+
+export const Timeline: React.FC<TimelineProps> = memo(({
+  containerWidth,
+  scrollLeft,
+  onScroll,
+  onTimeUpdate
+}) => {
+  const { state, dispatch } = useTimelineContext();
+  const { timeToPixels } = useTimelineViewport();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [contentWidth, setContentWidth] = useState(0);
+
+  // Update duration based on clips and media duration, but only when not dragging
+  useEffect(() => {
+    if (!state.isDragging) {
+      const maxEndTime = state.tracks.reduce((maxTime: number, track: Track) => {
+        const trackEndTime = track.clips.reduce<number>((trackMax: number, clip: ClipWithLayer) => {
+          const endTime = clip.endTime;
+          const startTime = clip.startTime;
+          
+          if (isMediaClip(clip)) {
+            const clipDuration = endTime - startTime;
+            const availableDuration = clip.mediaDuration - clip.mediaOffset;
+            return Math.max(trackMax, startTime + Math.min(clipDuration, availableDuration));
+          }
+          return Math.max(trackMax, endTime);
+        }, 0);
+        return Math.max(maxTime, trackEndTime);
+      }, 0);
+
+      // Only update if duration has changed significantly (>0.1s)
+      if (Math.abs(maxEndTime - state.duration) > 0.1) {
+        dispatch({
+          type: ActionTypes.SET_DURATION,
+          payload: Math.max(maxEndTime, 10) // Minimum 10 seconds duration
+        });
+      }
+    }
+  }, [state.tracks, dispatch, state.duration, state.isDragging]);
+
+  // Memoize callback handlers to prevent unnecessary re-renders
+  const handleTimeChange = useCallback((time: number) => {
+    logger.debug('Time change in Timeline:', {
+      time,
+      zoom: state.zoom,
+      duration: state.duration,
+      scrollLeft,
+      containerWidth
+    });
+
+    dispatch({
+      type: ActionTypes.SET_CURRENT_TIME,
+      payload: { time }
+    });
+    onTimeUpdate(time);
+  }, [dispatch, onTimeUpdate, state.zoom, state.duration, scrollLeft, containerWidth]);
+
+  const handleSelectTrack = useCallback((trackId: string) => {
+    dispatch({
+      type: ActionTypes.SELECT_TRACK,
+      payload: { trackId }
+    });
+  }, [dispatch]);
+
+  const handleSelectClip = useCallback((clipId: string) => {
+    logger.debug('Selecting clip:', clipId);
+    dispatch({
+      type: ActionTypes.SELECT_CLIPS,
+      payload: { clipIds: [clipId] }
+    });
+  }, [dispatch]);
+
+  const handleClipDragStart = useCallback((clipId: string) => {
+    dispatch({
+      type: ActionTypes.SET_DRAGGING,
+      payload: {
+        isDragging: true,
+        dragStartX: 0,
+        dragStartY: 0
+      }
+    });
+  }, [dispatch]);
+
+  const handleSplitClip = useCallback((clipId: string, time: number) => {
+    const track = state.tracks.find(t => t.clips.some(c => c.id === clipId));
+    if (!track) return;
+
+    const clip = track.clips.find(c => c.id === clipId);
+    if (!clip) return;
+
+    // Only split if time is within clip bounds
+    if (time > clip.startTime && time < clip.endTime) {
+      const firstClip = {
+        ...clip,
+        id: `${clip.id}-1`,
+        endTime: time
+      };
+
+      const secondClip = {
+        ...clip,
+        id: `${clip.id}-2`,
+        startTime: time,
+        mediaOffset: clip.mediaOffset + (time - clip.startTime)
+      };
+
+      // Remove original clip and add split clips
+      const updatedClips = track.clips
+        .filter(c => c.id !== clip.id)
+        .concat([firstClip, secondClip])
+        .sort((a, b) => a.startTime - b.startTime);
+
+      // Update tracks and maintain selection
+      dispatch({
+        type: ActionTypes.SET_TRACKS,
+        payload: state.tracks.map(t => 
+          t.id === track.id 
+            ? { ...t, clips: updatedClips }
+            : t
+        )
+      });
+
+      // Re-select the first clip after split
+      dispatch({
+        type: ActionTypes.SET_SELECTED_CLIP_IDS,
+        payload: [firstClip.id]
+      });
+    }
+  }, [state.tracks, dispatch]);
+
+  // Expose for testing
+  useEffect(() => {
+    logger.debug('Exposing timeline functions for testing');
+    const timelineFunctions = {
+      handleSelectClip,
+      handleSplitClip
+    };
+    (window as any).timelineFunctions = timelineFunctions;
+    logger.debug('Timeline functions exposed:', {
+      isExposed: !!(window as any).timelineFunctions,
+      functions: Object.keys(timelineFunctions)
+    });
+  }, [handleSelectClip, handleSplitClip]);
+
+  const handleClipDragEnd = useCallback(() => {
+    dispatch({
+      type: ActionTypes.SET_DRAGGING,
+      payload: {
+        isDragging: false,
+        dragStartX: 0,
+        dragStartY: 0
+      }
+    });
+  }, [dispatch]);
+
+  const handleUpdateTrack = useCallback((trackId: string, updates: Partial<Track>) => {
+    dispatch({
+      type: ActionTypes.UPDATE_TRACK,
+      payload: { trackId, track: updates }
+    });
+  }, [dispatch]);
+
+  const handleDeleteTrack = useCallback((trackId: string) => {
+    dispatch({
+      type: ActionTypes.REMOVE_TRACK,
+      payload: { trackId }
+    });
+  }, [dispatch]);
+
+  const handleMoveTrack = useCallback((trackId: string, direction: 'up' | 'down') => {
+    const tracks = [...state.tracks];
+    const trackIndex = tracks.findIndex((track: Track) => track.id === trackId);
+    if (trackIndex === -1) return;
+
+    const newIndex = direction === 'up' 
+      ? Math.max(0, trackIndex - 1)
+      : Math.min(tracks.length - 1, trackIndex + 1);
+
+    if (newIndex !== trackIndex) {
+      const [movedTrack] = tracks.splice(trackIndex, 1) as Track[];
+      tracks.splice(newIndex, 0, movedTrack);
+
+      dispatch({
+        type: ActionTypes.SET_TRACKS,
+        payload: tracks
+      });
+    }
+  }, [dispatch, state.tracks]);
+
+  const handleToggleVisibility = useCallback((trackId: string) => {
+    dispatch({
+      type: ActionTypes.UPDATE_TRACK,
+      payload: {
+        trackId,
+        changes: (track: Track) => ({ ...track, isVisible: !track.isVisible })
+      }
+    });
+  }, [dispatch]);
+
+  // Calculate content width based on duration and zoom, but only when not dragging
+  useEffect(() => {
+    if (!state.isDragging) {
+      const minWidth = containerWidth;
+      const durationWidth = state.duration * state.zoom * 100;
+      const newWidth = Math.max(minWidth, durationWidth);
+      setContentWidth(newWidth);
+
+      logger.debug('Timeline content width updated:', {
+        containerWidth,
+        durationWidth,
+        contentWidth: newWidth,
+        zoom: state.zoom,
+        duration: state.duration,
+        isDragging: state.isDragging
+      });
+    }
+  }, [containerWidth, state.duration, state.zoom, state.isDragging]);
+
+  // Handle scroll events with throttling
+  const handleScroll = useCallback(throttle((e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    onScroll(target.scrollLeft, target.scrollTop);
+  }, THROTTLE.SCROLL), [onScroll]);
+
+  // Sync scroll position from props
+  useEffect(() => {
+    if (containerRef.current && containerRef.current.scrollLeft !== scrollLeft) {
+      containerRef.current.scrollLeft = scrollLeft;
+    }
+  }, [scrollLeft]);
+
+  // Handle keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only handle shortcuts when a clip is selected
+      if (state.selectedClipIds.length === 1) {
+        switch (e.key) {
+          case 's':
+          case 'S':
+            e.preventDefault();
+            logger.debug('Split key pressed:', {
+              selectedClipIds: state.selectedClipIds,
+              currentTime: state.currentTime,
+              tracks: state.tracks
+            });
+            handleSplitClip(state.selectedClipIds[0], state.currentTime);
+            logger.debug('After split attempt:', {
+              tracks: state.tracks
+            });
+            break;
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [state.selectedClipIds, state.currentTime, handleSplitClip]);
+
+  return (
+    <div className="timeline-wrapper" data-testid="timeline" tabIndex={-1}>
+      <TimelineRuler
+        currentTime={state.currentTime}
+        duration={state.duration}
+        zoom={state.zoom}
+        fps={state.fps}
+        onTimeChange={handleTimeChange}
+        containerWidth={containerWidth}
+        scrollLeft={scrollLeft}
+        isDragging={state.isDragging}
+      />
+      <div className="timeline-body" data-testid="timeline-body">
+        <div 
+          ref={containerRef}
+          className="timeline-content"
+          data-testid="timeline-content"
+          style={{
+            width: contentWidth,
+            minWidth: '100%'
+          }}
+          onScroll={handleScroll}
+        >
+          <TimelinePlayhead
+            currentTime={state.currentTime}
+            isPlaying={state.isPlaying}
+            zoom={state.zoom}
+            fps={state.fps}
+            onTimeUpdate={handleTimeChange}
+            className="ruler"
+            isDragging={state.isDragging}
+          />
+          <TimelinePlayhead
+            currentTime={state.currentTime}
+            isPlaying={state.isPlaying}
+            zoom={state.zoom}
+            fps={state.fps}
+            onTimeUpdate={handleTimeChange}
+            className="tracks"
+            isDragging={state.isDragging}
+          />
+          <TimelineTracks
+            tracks={state.tracks}
+            selectedTrackId={state.selectedTrackId}
+            selectedClipIds={state.selectedClipIds}
+            onSelectTrack={handleSelectTrack}
+            onSelectClip={handleSelectClip}
+            onClipDragStart={handleClipDragStart}
+            onClipDragEnd={handleClipDragEnd}
+            onUpdateTrack={handleUpdateTrack}
+            onDeleteTrack={handleDeleteTrack}
+            onMoveTrack={handleMoveTrack}
+            onToggleVisibility={handleToggleVisibility}
+            zoom={state.zoom}
+            fps={state.fps}
+          />
+        </div>
+      </div>
+    </div>
+  );
+});
+
+Timeline.displayName = 'Timeline';

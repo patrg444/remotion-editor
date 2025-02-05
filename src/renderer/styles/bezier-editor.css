@@ -1,0 +1,294 @@
+@import './variables.css';
+@import './keyframes.css';
+
+/* ======================
+   Base Layout
+   ====================== */
+.bezier-curve-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  padding: var(--spacing-lg);
+  background: var(--surface-1);
+  border-radius: var(--border-radius-lg);
+  position: relative;
+  min-width: var(--canvas-size);
+  max-width: var(--canvas-max-width);
+  margin: 0 auto;
+  box-shadow: var(--shadow-md);
+  transition: background var(--animation-duration) var(--animation-easing);
+}
+
+/* ======================
+   Canvas
+   ====================== */
+.curve-canvas {
+  width: var(--canvas-size);
+  height: var(--canvas-size);
+  background: var(--surface-2);
+  border-radius: var(--border-radius-md);
+  cursor: crosshair;
+  box-shadow: var(--shadow-inset);
+  touch-action: none; /* Prevent touch scrolling */
+  transition: all var(--animation-duration) var(--animation-easing);
+}
+
+.curve-canvas[aria-busy="true"] {
+  cursor: wait;
+  opacity: var(--opacity-dim);
+}
+
+/* ======================
+   Presets Panel
+   ====================== */
+.bezier-presets {
+  display: flex;
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
+  justify-content: center;
+  padding: var(--spacing-lg);
+  background: var(--surface-2);
+  border-radius: var(--border-radius-md);
+  transition: background var(--animation-duration) var(--animation-easing);
+}
+
+/* ======================
+   Preset Buttons
+   ====================== */
+.preset-button {
+  padding: var(--spacing-md) var(--spacing-lg);
+  border: none;
+  border-radius: var(--border-radius-md);
+  background: var(--surface-3);
+  color: var(--text-1);
+  cursor: pointer;
+  transition: all var(--animation-duration) var(--animation-easing);
+  text-transform: capitalize;
+  font-size: var(--font-size-md);
+  min-width: var(--min-button-width-md);
+  font-family: var(--font-family-base);
+  line-height: var(--line-height-normal);
+}
+
+.preset-button:hover {
+  background: var(--surface-4);
+  transform: scale(var(--scale-hover));
+}
+
+.preset-button:active {
+  transform: scale(var(--scale-active));
+}
+
+.preset-button[aria-pressed="true"] {
+  background: var(--primary);
+  color: var(--surface-1);
+}
+
+.preset-button[disabled] {
+  opacity: var(--opacity-dim);
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ======================
+   Help Panel
+   ====================== */
+.bezier-controls-help {
+  margin-top: var(--spacing-lg);
+  padding: var(--spacing-lg);
+  background: var(--surface-2);
+  border-radius: var(--border-radius-md);
+  font-size: var(--font-size-md);
+  color: var(--text-2);
+  line-height: var(--line-height-relaxed);
+  transition: all var(--animation-duration) var(--animation-easing);
+}
+
+.bezier-controls-help p {
+  margin: 0;
+  padding: 0;
+}
+
+.bezier-controls-help p:not(:last-child) {
+  margin-bottom: var(--spacing-md);
+}
+
+/* ======================
+   Focus & Keyboard Navigation
+   ====================== */
+.curve-canvas:focus-visible,
+.curve-canvas[role="application"]:focus-visible {
+  outline: calc(var(--focus-outline-width) * 1.5) solid var(--primary);
+  outline-offset: var(--focus-outline-offset);
+  box-shadow: 0 0 0 var(--focus-ring-width) var(--surface-1), 
+              0 0 0 var(--focus-ring-gap) var(--primary);
+}
+
+.preset-button:focus-visible {
+  outline: var(--focus-outline-width) solid var(--primary);
+  outline-offset: var(--focus-outline-offset);
+  box-shadow: 0 0 0 var(--focus-ring-width) var(--surface-1), 
+              0 0 0 var(--focus-ring-gap) var(--primary);
+}
+
+/* Remove default focus styles when using mouse */
+.curve-canvas:focus:not(:focus-visible),
+.preset-button:focus:not(:focus-visible) {
+  outline: none;
+  box-shadow: none;
+}
+
+/* ======================
+   Tooltips
+   ====================== */
+.control-point-tooltip {
+  position: absolute;
+  transform: translateX(-50%);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--surface-2);
+  color: var(--text-1);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  pointer-events: none;
+  z-index: var(--z-index-tooltip);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--animation-duration) var(--animation-easing);
+  white-space: nowrap;
+}
+
+/* ======================
+   Dark Mode
+   ====================== */
+@media (prefers-color-scheme: dark) {
+  .bezier-curve-editor {
+    box-shadow: var(--shadow-lg);
+  }
+
+  .curve-canvas {
+    border: 1px solid var(--surface-3);
+  }
+
+  .control-point-tooltip {
+    background: var(--surface-3);
+    border: 1px solid var(--surface-4);
+  }
+
+  .preset-button[aria-pressed="true"] {
+    color: var(--surface-1);
+  }
+}
+
+/* ======================
+   High Contrast Mode
+   ====================== */
+@media (forced-colors: active) {
+  .curve-canvas {
+    border: 1px solid CanvasText;
+  }
+
+  .bezier-controls-help,
+  .bezier-presets {
+    border: 1px solid CanvasText;
+  }
+
+  .preset-button {
+    border: 1px solid ButtonText;
+    background: ButtonFace;
+    color: ButtonText;
+  }
+
+  .preset-button[aria-pressed="true"] {
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  .control-point-tooltip {
+    border: 1px solid CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  .curve-canvas:focus-visible,
+  .preset-button:focus-visible {
+    outline: 2px solid Highlight;
+  }
+}
+
+/* ======================
+   Reduced Motion
+   ====================== */
+@media (prefers-reduced-motion: reduce) {
+  .bezier-curve-editor,
+  .curve-canvas,
+  .preset-button,
+  .control-point-tooltip {
+    transition: none;
+  }
+
+  .preset-button:hover,
+  .preset-button:active {
+    transform: none;
+  }
+}
+
+/* ======================
+   Print Styles
+   ====================== */
+@media print {
+  .bezier-curve-editor {
+    box-shadow: none;
+    border: 1px solid black;
+    break-inside: avoid;
+  }
+
+  .curve-canvas {
+    border: 1px solid black;
+    box-shadow: none;
+  }
+
+  .preset-button {
+    display: none;
+  }
+
+  .bezier-controls-help {
+    color: black;
+    background: none;
+    border: 1px solid black;
+    padding: var(--spacing-md);
+  }
+
+  .control-point-tooltip {
+    display: none;
+  }
+}
+
+/* ======================
+   Responsive Adjustments
+   ====================== */
+@media (max-width: var(--breakpoint-md)) {
+  .bezier-curve-editor {
+    min-width: unset;
+    width: 100%;
+  }
+
+  .curve-canvas {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1;
+  }
+
+  .bezier-presets {
+    padding: var(--spacing-md);
+  }
+
+  .preset-button {
+    padding: var(--spacing-xs) var(--spacing-md);
+    min-width: var(--min-button-width-sm);
+    font-size: var(--font-size-sm);
+  }
+
+  .bezier-controls-help {
+    font-size: var(--font-size-sm);
+    padding: var(--spacing-md);
+  }
+}

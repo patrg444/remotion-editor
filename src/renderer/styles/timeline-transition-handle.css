@@ -1,0 +1,103 @@
+.timeline-transition-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: var(--timeline-handle-width);
+  background-color: var(--timeline-handle-color);
+  border-radius: var(--timeline-border-radius);
+  transform: translateX(-50%);
+  z-index: var(--timeline-z-handles);
+  opacity: 0.7;
+  transition: 
+    opacity var(--timeline-transition-fast),
+    background-color var(--timeline-transition-fast),
+    transform var(--timeline-transition-fast),
+    width var(--timeline-transition-fast);
+}
+
+/* Handle States */
+.timeline-transition-handle:hover,
+.timeline-transition-handle.dragging {
+  opacity: 1;
+  background-color: var(--timeline-handle-hover-color);
+}
+
+.timeline-transition-handle.dragging {
+  background-color: var(--timeline-handle-active-color);
+  transform: translateX(-50%) scale(1.2);
+}
+
+/* Handle Grip Lines */
+.timeline-transition-handle::before,
+.timeline-transition-handle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  width: 2px;
+  height: 16px;
+  background-color: rgba(255, 255, 255, 0.5);
+  transform: translateX(-50%);
+}
+
+.timeline-transition-handle::before {
+  top: calc(50% - 12px);
+}
+
+.timeline-transition-handle::after {
+  top: calc(50% + 4px);
+}
+
+/* Focus Styles */
+.timeline-transition-handle:focus {
+  outline: none;
+}
+
+.timeline-transition-handle:focus-visible {
+  box-shadow: 0 0 0 var(--timeline-focus-width) var(--timeline-focus-color);
+}
+
+/* Touch Device Styles */
+@media (pointer: coarse) {
+  .timeline-transition-handle {
+    width: var(--timeline-handle-touch-width);
+    opacity: 0.8; /* More visible on touch devices */
+  }
+
+  .timeline-transition-handle::before,
+  .timeline-transition-handle::after {
+    height: 24px;
+  }
+
+  .timeline-transition-handle::before {
+    top: calc(50% - 16px);
+  }
+
+  .timeline-transition-handle::after {
+    top: calc(50% + 8px);
+  }
+}
+
+/* High Contrast Mode */
+@media (forced-colors: active) {
+  .timeline-transition-handle {
+    forced-color-adjust: none;
+    background-color: ButtonText;
+    border: 1px solid ButtonText;
+  }
+
+  .timeline-transition-handle:hover,
+  .timeline-transition-handle.dragging {
+    background-color: Highlight;
+    border-color: Highlight;
+  }
+
+  .timeline-transition-handle::before,
+  .timeline-transition-handle::after {
+    background-color: Canvas;
+  }
+
+  .timeline-transition-handle:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+}

@@ -1,0 +1,188 @@
+.playback-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-lg);
+  padding: var(--spacing-sm);
+  background: var(--surface-hover);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.playback-buttons,
+.in-out-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.control-button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-large);
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.control-button:hover {
+  background: var(--surface-active);
+  border-color: var(--primary-color);
+}
+
+.control-button:active {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.control-button.active {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.control-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.play-button {
+  width: 48px;
+  height: 48px;
+  font-size: 24px;
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.play-button:hover {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+}
+
+.play-button:active {
+  background: var(--primary-active);
+  border-color: var(--primary-active);
+}
+
+/* Transport controls */
+.transport-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.transport-button {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-small);
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.transport-button:hover {
+  background: var(--surface-active);
+  color: var(--text-primary);
+}
+
+.transport-button.active {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: var(--text-primary);
+}
+
+/* Tool buttons */
+.tool-button {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-normal);
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.tool-button:hover {
+  background: var(--surface-active);
+  color: var(--text-primary);
+}
+
+.tool-button.active {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: var(--text-primary);
+}
+
+/* Button groups */
+.button-group {
+  display: flex;
+  gap: 1px;
+}
+
+.button-group .control-button:first-child,
+.button-group .transport-button:first-child,
+.button-group .tool-button:first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.button-group .control-button:last-child,
+.button-group .transport-button:last-child,
+.button-group .tool-button:last-child {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.button-group .control-button:not(:first-child):not(:last-child),
+.button-group .transport-button:not(:first-child):not(:last-child),
+.button-group .tool-button:not(:first-child):not(:last-child) {
+  border-radius: 0;
+}
+
+/* Button tooltips */
+[title] {
+  position: relative;
+}
+
+[title]:hover::after {
+  content: attr(title);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--surface-active);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: var(--font-size-small);
+  white-space: nowrap;
+  z-index: var(--z-index-tooltip);
+}
+
+[title]:hover::before {
+  content: '';
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 4px solid transparent;
+  border-top-color: var(--border-color);
+}

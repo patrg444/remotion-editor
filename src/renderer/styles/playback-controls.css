@@ -1,0 +1,118 @@
+.playback-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--timeline-spacing-sm);
+  padding: var(--timeline-spacing-sm);
+  background-color: var(--timeline-bg-color);
+  border-radius: var(--timeline-border-radius);
+}
+
+/* Control Buttons */
+.playback-controls button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--timeline-handle-width);
+  height: var(--timeline-handle-width);
+  padding: 0;
+  background: none;
+  border: var(--timeline-border-width) solid var(--timeline-border-color);
+  border-radius: var(--timeline-border-radius);
+  color: var(--timeline-ruler-text-color);
+  cursor: pointer;
+  transition: 
+    background-color var(--timeline-transition-fast),
+    border-color var(--timeline-transition-fast),
+    color var(--timeline-transition-fast),
+    transform var(--timeline-transition-fast);
+}
+
+/* Button States */
+.playback-controls button:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--timeline-bg-color) 80%, white);
+  border-color: var(--timeline-handle-hover-color);
+  color: var(--timeline-handle-hover-color);
+  transform: scale(1.1);
+}
+
+.playback-controls button:active:not(:disabled) {
+  background-color: color-mix(in srgb, var(--timeline-bg-color) 70%, white);
+  border-color: var(--timeline-handle-active-color);
+  color: var(--timeline-handle-active-color);
+  transform: scale(0.95);
+}
+
+/* Play/Pause Button */
+.playback-controls button .icon.play-pause {
+  font-size: var(--timeline-font-size-lg);
+}
+
+/* Step Buttons */
+.playback-controls button .icon.step-backward,
+.playback-controls button .icon.step-forward {
+  font-size: var(--timeline-font-size-md);
+}
+
+/* Disabled State */
+.playback-controls.disabled button,
+.playback-controls button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Focus Styles */
+.playback-controls button:focus {
+  outline: none;
+}
+
+.playback-controls button:focus-visible {
+  box-shadow: 0 0 0 var(--timeline-focus-width) var(--timeline-focus-color);
+}
+
+/* Touch Device Styles */
+@media (pointer: coarse) {
+  .playback-controls {
+    gap: var(--timeline-spacing-md);
+    padding: var(--timeline-spacing-md);
+  }
+
+  .playback-controls button {
+    width: var(--timeline-handle-touch-width);
+    height: var(--timeline-handle-touch-width);
+  }
+
+  .playback-controls button .icon.play-pause {
+    font-size: calc(var(--timeline-font-size-lg) * 1.5);
+  }
+
+  .playback-controls button .icon.step-backward,
+  .playback-controls button .icon.step-forward {
+    font-size: var(--timeline-font-size-lg);
+  }
+}
+
+/* High Contrast Mode */
+@media (forced-colors: active) {
+  .playback-controls button {
+    border: 1px solid ButtonText;
+  }
+
+  .playback-controls button:hover:not(:disabled) {
+    background-color: Highlight;
+    border-color: Highlight;
+    color: HighlightText;
+  }
+
+  .playback-controls button:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+
+  .playback-controls.disabled button,
+  .playback-controls button:disabled {
+    opacity: 1;
+    color: GrayText;
+    border-color: GrayText;
+  }
+}

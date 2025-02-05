@@ -1,0 +1,355 @@
+@import './variables.css';
+
+/* ======================
+   Accessibility Helpers
+   ====================== */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ======================
+   Keyframe Points
+   ====================== */
+.keyframe-point {
+  fill: var(--primary);
+  stroke: var(--surface-1);
+  stroke-width: var(--stroke-width-md);
+  cursor: pointer;
+  transition: transform var(--animation-duration-fast) var(--animation-easing);
+  /* ARIA support */
+  [role="button"] {
+    cursor: pointer;
+  }
+  [aria-grabbed="true"] {
+    cursor: grabbing;
+  }
+}
+
+.keyframe-point:hover {
+  transform: scale(var(--scale-hover));
+}
+
+.keyframe-point.dragging {
+  transform: scale(var(--scale-active));
+}
+
+.keyframe-point.selected {
+  fill: var(--accent);
+}
+
+/* ======================
+   Interpolation Indicators
+   ====================== */
+.interpolation-indicator {
+  stroke: var(--text-2);
+  stroke-width: var(--stroke-width-sm);
+  fill: none;
+  opacity: var(--opacity-dim);
+  pointer-events: none;
+  transition: opacity var(--animation-duration) var(--animation-easing);
+}
+
+/* Indicator states */
+.keyframe-point:hover + .interpolation-indicator,
+.keyframe-point.selected + .interpolation-indicator,
+.keyframe-point:focus + .interpolation-indicator {
+  opacity: var(--opacity-full);
+}
+
+/* Indicator types */
+.interpolation-indicator.linear {
+  stroke-dasharray: 2 2;
+}
+
+.interpolation-indicator.step {
+  stroke-dasharray: none;
+}
+
+.interpolation-indicator.bezier {
+  stroke: var(--accent);
+}
+
+.interpolation-indicator.ease-in,
+.interpolation-indicator.ease-out,
+.interpolation-indicator.ease-in-out {
+  stroke: var(--primary);
+}
+
+/* ======================
+   Tooltips
+   ====================== */
+.keyframe-tooltip {
+  position: absolute;
+  background: var(--surface-1);
+  border: 1px solid var(--surface-2);
+  border-radius: var(--border-radius-md);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: var(--font-size-md);
+  color: var(--text-1);
+  pointer-events: none;
+  z-index: var(--z-index-tooltip);
+  box-shadow: var(--shadow-sm);
+  white-space: nowrap;
+  animation: tooltip-fade-in var(--animation-duration) var(--animation-easing);
+  /* ARIA support */
+  [role="tooltip"] {
+    position: relative;
+  }
+}
+
+.keyframe-tooltip::after {
+  content: '';
+  position: absolute;
+  bottom: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 5px 5px 0;
+  border-style: solid;
+  border-color: var(--surface-1) transparent transparent;
+}
+
+/* ======================
+   Bezier Editor Modal
+   ====================== */
+.bezier-editor-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-index-modal);
+  animation: overlay-fade-in var(--animation-duration) var(--animation-easing);
+  /* ARIA support */
+  [role="dialog"] {
+    position: relative;
+  }
+}
+
+.bezier-editor-container {
+  background: var(--surface-1);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-md);
+  max-width: 90vw;
+  max-height: 90vh;
+  overflow: auto;
+  animation: modal-slide-in var(--animation-duration) var(--animation-easing);
+  position: relative;
+}
+
+.close-bezier-editor {
+  position: absolute;
+  top: var(--spacing-lg);
+  right: var(--spacing-lg);
+  padding: var(--spacing-md) var(--spacing-lg);
+  border: none;
+  border-radius: var(--border-radius-md);
+  background: var(--surface-3);
+  color: var(--text-1);
+  cursor: pointer;
+  transition: all var(--animation-duration) var(--animation-easing);
+  font-size: var(--font-size-md);
+}
+
+.close-bezier-editor:hover {
+  background: var(--surface-4);
+}
+
+/* ======================
+   Focus & Keyboard Navigation
+   ====================== */
+.keyframe-point:focus-visible {
+  outline: none;
+  stroke: var(--accent);
+  stroke-width: var(--stroke-width-lg);
+  filter: drop-shadow(0 0 3px var(--accent));
+}
+
+.close-bezier-editor:focus-visible {
+  outline: var(--focus-outline-width) solid var(--primary);
+  outline-offset: var(--focus-outline-offset);
+  box-shadow: 0 0 0 var(--focus-ring-width) var(--surface-1), 0 0 0 var(--focus-ring-gap) var(--primary);
+}
+
+/* Remove default focus styles when using mouse */
+.keyframe-point:focus:not(:focus-visible) {
+  stroke: var(--surface-1);
+  stroke-width: var(--stroke-width-md);
+  filter: none;
+}
+
+.close-bezier-editor:focus:not(:focus-visible) {
+  outline: none;
+  box-shadow: none;
+}
+
+/* ======================
+   Dark Mode
+   ====================== */
+@media (prefers-color-scheme: dark) {
+  .keyframe-tooltip {
+    background: var(--surface-2);
+    border-color: var(--surface-3);
+  }
+
+  .keyframe-tooltip::after {
+    border-color: var(--surface-2) transparent transparent;
+  }
+
+  .bezier-editor-container {
+    background: var(--surface-2);
+  }
+
+  .interpolation-indicator {
+    stroke: var(--text-3);
+  }
+
+  .keyframe-point:focus-visible {
+    filter: drop-shadow(0 0 4px var(--accent));
+  }
+}
+
+/* ======================
+   High Contrast Mode
+   ====================== */
+@media (forced-colors: active) {
+  .keyframe-point {
+    fill: ButtonText;
+    stroke: ButtonFace;
+  }
+
+  .keyframe-point.selected {
+    fill: Highlight;
+  }
+
+  .keyframe-point:focus-visible {
+    stroke: Highlight;
+    outline: var(--focus-outline-width) solid Highlight;
+    outline-offset: var(--focus-outline-offset);
+  }
+
+  .interpolation-indicator {
+    stroke: CanvasText;
+  }
+
+  .keyframe-tooltip {
+    border: 1px solid CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  .bezier-editor-container {
+    border: 1px solid CanvasText;
+    background: Canvas;
+  }
+
+  .close-bezier-editor {
+    border: 1px solid ButtonText;
+    background: ButtonFace;
+    color: ButtonText;
+  }
+
+  .close-bezier-editor:focus-visible {
+    outline: var(--focus-outline-width) solid Highlight;
+  }
+}
+
+/* ======================
+   Reduced Motion
+   ====================== */
+@media (prefers-reduced-motion: reduce) {
+  .keyframe-point {
+    transition: none;
+  }
+
+  .keyframe-point:hover {
+    transform: none;
+  }
+
+  .keyframe-point.dragging {
+    transform: none;
+  }
+
+  .interpolation-indicator {
+    transition: none;
+  }
+
+  .keyframe-tooltip,
+  .bezier-editor-overlay,
+  .bezier-editor-container {
+    animation: none;
+  }
+}
+
+/* ======================
+   Print Styles
+   ====================== */
+@media print {
+  .keyframe-point {
+    fill: black !important;
+    stroke: black !important;
+    stroke-width: 1px !important;
+  }
+
+  .interpolation-indicator {
+    stroke: black !important;
+    opacity: 1 !important;
+  }
+
+  .keyframe-tooltip,
+  .bezier-editor-overlay,
+  .bezier-editor-container {
+    display: none !important;
+  }
+
+  /* Force background colors */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+/* ======================
+   Animations
+   ====================== */
+@keyframes tooltip-fade-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@keyframes overlay-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modal-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

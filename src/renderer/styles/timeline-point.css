@@ -1,0 +1,133 @@
+.timeline-point {
+  position: absolute;
+  transform: translateX(-50%);
+  z-index: var(--timeline-z-tracks);
+  cursor: pointer;
+  user-select: none;
+  transition: 
+    transform var(--timeline-transition-fast),
+    background-color var(--timeline-transition-fast);
+}
+
+/* Marker Point */
+.timeline-point.marker {
+  width: var(--timeline-handle-width);
+  height: var(--timeline-handle-width);
+  border-radius: 50%;
+  background-color: var(--point-color, var(--timeline-handle-color));
+}
+
+.timeline-point.marker .marker-flag {
+  position: absolute;
+  top: calc(-1 * var(--timeline-spacing-xl));
+  left: 50%;
+  transform: translateX(-50%);
+  padding: var(--timeline-spacing-xs) var(--timeline-spacing-sm);
+  background-color: var(--point-color, var(--timeline-handle-color));
+  border-radius: var(--timeline-border-radius);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity var(--timeline-transition-fast);
+}
+
+.timeline-point.marker:hover .marker-flag,
+.timeline-point.marker.selected .marker-flag {
+  opacity: 1;
+}
+
+.marker-label {
+  color: white;
+  font-size: var(--timeline-font-size-sm);
+  font-weight: var(--timeline-font-weight-bold);
+}
+
+/* In/Out Points */
+.timeline-point.in,
+.timeline-point.out {
+  width: var(--timeline-spacing-md);
+  height: var(--timeline-ruler-height);
+  background-color: var(--point-color, var(--timeline-handle-color));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.in-point-indicator,
+.out-point-indicator {
+  color: white;
+  font-size: var(--timeline-font-size-sm);
+  font-weight: var(--timeline-font-weight-bold);
+}
+
+/* Selected State */
+.timeline-point.selected {
+  transform: translateX(-50%) scale(1.2);
+  box-shadow: var(--timeline-shadow-md);
+}
+
+/* Hover State */
+.timeline-point:hover {
+  transform: translateX(-50%) scale(1.1);
+}
+
+.timeline-point.selected:hover {
+  transform: translateX(-50%) scale(1.3);
+}
+
+/* Touch Device Styles */
+@media (pointer: coarse) {
+  .timeline-point.marker {
+    width: var(--timeline-handle-touch-width);
+    height: var(--timeline-handle-touch-width);
+  }
+
+  .timeline-point.in,
+  .timeline-point.out {
+    width: var(--timeline-spacing-lg);
+  }
+
+  .marker-label {
+    font-size: var(--timeline-font-size-md);
+  }
+}
+
+/* High Contrast Mode */
+@media (forced-colors: active) {
+  .timeline-point {
+    forced-color-adjust: none;
+  }
+
+  .timeline-point.marker {
+    background-color: Highlight;
+    border: 1px solid CanvasText;
+  }
+
+  .timeline-point.marker .marker-flag {
+    background-color: Highlight;
+    border: 1px solid CanvasText;
+  }
+
+  .marker-label {
+    color: HighlightText;
+  }
+
+  .timeline-point.in,
+  .timeline-point.out {
+    background-color: Highlight;
+    border: 1px solid CanvasText;
+  }
+
+  .in-point-indicator,
+  .out-point-indicator {
+    color: HighlightText;
+  }
+}
+
+/* Focus Styles */
+.timeline-point:focus {
+  outline: none;
+}
+
+.timeline-point:focus-visible {
+  box-shadow: 0 0 0 var(--timeline-focus-width) var(--timeline-focus-color);
+}

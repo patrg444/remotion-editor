@@ -1,0 +1,111 @@
+/* Timeline Theme Variables */
+
+:root {
+  /* Layout Dimensions */
+  --timeline-track-height: 40px;
+  --timeline-header-height: 48px;
+  --timeline-ruler-height: 24px;
+  --timeline-playhead-width: 2px;
+  --timeline-clip-min-width: 4px;
+  --timeline-handle-width: 12px;
+  --timeline-handle-touch-width: 20px;
+
+  /* Spacing */
+  --timeline-spacing-xs: 2px;
+  --timeline-spacing-sm: 4px;
+  --timeline-spacing-md: 8px;
+  --timeline-spacing-lg: 16px;
+  --timeline-spacing-xl: 24px;
+
+  /* Ruler Measurements */
+  --timeline-ruler-major-height: 12px;
+  --timeline-ruler-minor-height: 8px;
+  --timeline-ruler-micro-height: 4px;
+  --timeline-ruler-text-offset: 14px;
+  --timeline-ruler-label-spacing: 50px;
+
+  /* Colors */
+  --timeline-bg-color: #1e1e1e;
+  --timeline-track-bg: #2d2d2d;
+  --timeline-track-alt-bg: #252525;
+  --timeline-track-selected-bg: #3c3c3c;
+  --timeline-clip-bg: #4a4a4a;
+  --timeline-clip-selected-bg: #0078d4;
+  --timeline-playhead-color: #ff4081;
+  --timeline-ruler-text-color: #cccccc;
+  --timeline-ruler-division-color: #404040;
+  --timeline-handle-color: #0078d4;
+  --timeline-handle-hover-color: #0095ff;
+  --timeline-handle-active-color: #00b0ff;
+
+  /* Typography */
+  --timeline-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --timeline-font-size-sm: 11px;
+  --timeline-font-size-md: 12px;
+  --timeline-font-size-lg: 14px;
+  --timeline-font-weight-normal: 400;
+  --timeline-font-weight-bold: 600;
+
+  /* Transitions */
+  --timeline-transition-fast: 100ms ease;
+  --timeline-transition-normal: 200ms ease;
+  --timeline-transition-slow: 300ms ease;
+
+  /* Z-index Layers */
+  --timeline-z-tracks: 1;
+  --timeline-z-playhead: 2;
+  --timeline-z-handles: 3;
+  --timeline-z-header: 4;
+  --timeline-z-overlay: 5;
+
+  /* Borders & Shadows */
+  --timeline-border-color: #404040;
+  --timeline-border-width: 1px;
+  --timeline-border-radius: 4px;
+  --timeline-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --timeline-shadow-md: 0 2px 4px rgba(0, 0, 0, 0.2);
+  --timeline-shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.2);
+
+  /* Focus & Selection */
+  --timeline-focus-color: #0078d4;
+  --timeline-focus-width: 2px;
+  --timeline-selection-bg: rgba(0, 120, 215, 0.1);
+  --timeline-selection-border: #0078d4;
+}
+
+/* High Contrast Theme */
+@media (forced-colors: active) {
+  :root {
+    --timeline-bg-color: Canvas;
+    --timeline-track-bg: Canvas;
+    --timeline-track-alt-bg: Canvas;
+    --timeline-track-selected-bg: Highlight;
+    --timeline-clip-bg: ButtonFace;
+    --timeline-clip-selected-bg: Highlight;
+    --timeline-playhead-color: Highlight;
+    --timeline-ruler-text-color: CanvasText;
+    --timeline-ruler-division-color: GrayText;
+    --timeline-handle-color: ButtonText;
+    --timeline-handle-hover-color: Highlight;
+    --timeline-handle-active-color: Highlight;
+    --timeline-border-color: CanvasText;
+    --timeline-focus-color: Highlight;
+    --timeline-selection-bg: Highlight;
+    --timeline-selection-border: CanvasText;
+  }
+}
+
+/* Touch Device Adjustments */
+@media (pointer: coarse) {
+  :root {
+    --timeline-track-height: 48px;
+    --timeline-header-height: 56px;
+    --timeline-ruler-height: 32px;
+    --timeline-handle-width: var(--timeline-handle-touch-width);
+    --timeline-spacing-sm: 8px;
+    --timeline-spacing-md: 12px;
+    --timeline-font-size-sm: 12px;
+    --timeline-font-size-md: 14px;
+    --timeline-font-size-lg: 16px;
+  }
+}

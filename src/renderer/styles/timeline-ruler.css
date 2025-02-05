@@ -1,0 +1,81 @@
+.timeline-ruler {
+  position: relative;
+  width: 100%;
+  height: var(--timeline-ruler-height);
+  background-color: var(--timeline-bg-color);
+  border-bottom: var(--timeline-border-width) solid var(--timeline-border-color);
+  user-select: none;
+}
+
+.timeline-ruler svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Ruler Divisions */
+.ruler-division {
+  stroke: var(--timeline-ruler-division-color);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+  transition: stroke var(--timeline-transition-fast);
+}
+
+.ruler-division.major {
+  stroke-width: 1.5px;
+  stroke: var(--timeline-ruler-division-color);
+}
+
+.ruler-division.minor {
+  stroke-width: 1px;
+  stroke: color-mix(in srgb, var(--timeline-ruler-division-color) 75%, transparent);
+}
+
+.ruler-division.micro {
+  stroke-width: 1px;
+  stroke: color-mix(in srgb, var(--timeline-ruler-division-color) 50%, transparent);
+}
+
+/* Ruler Labels */
+.ruler-label {
+  fill: var(--timeline-ruler-text-color);
+  font-size: var(--timeline-font-size-sm);
+  font-family: var(--timeline-font-family);
+  font-weight: var(--timeline-font-weight-normal);
+  pointer-events: none;
+  transition: fill var(--timeline-transition-fast);
+}
+
+/* Touch Device Styles */
+@media (pointer: coarse) {
+  .ruler-label {
+    font-size: var(--timeline-font-size-md);
+  }
+
+  .ruler-division.major {
+    stroke-width: 2px;
+  }
+
+  .ruler-division.minor {
+    stroke-width: 1.5px;
+  }
+}
+
+/* High Contrast Mode */
+@media (forced-colors: active) {
+  .ruler-division {
+    stroke: CanvasText;
+  }
+
+  .ruler-division.major {
+    stroke: CanvasText;
+  }
+
+  .ruler-division.minor,
+  .ruler-division.micro {
+    stroke: GrayText;
+  }
+
+  .ruler-label {
+    fill: CanvasText;
+  }
+}

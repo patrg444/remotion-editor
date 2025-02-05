@@ -1,0 +1,142 @@
+@import './variables.css';
+@import './keyframes.css';
+
+/* Base container */
+.volume-envelope {
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+  overflow: visible;
+  touch-action: none; /* Prevent touch scrolling */
+}
+
+/* Volume curve */
+.volume-curve {
+  stroke: var(--primary);
+  stroke-width: var(--stroke-width-md);
+  fill: none;
+  pointer-events: none;
+  transition: stroke var(--animation-duration) var(--animation-easing);
+}
+
+/* Keyframe points */
+.volume-envelope .keyframe-point {
+  fill: var(--surface-2);
+  stroke: var(--primary);
+  stroke-width: var(--stroke-width-sm);
+  transform-origin: center;
+  cursor: grab;
+  transition: all var(--animation-duration) var(--animation-easing);
+}
+
+/* Hover state */
+.volume-envelope .keyframe-point:hover {
+  fill: var(--surface-3);
+  transform: scale(var(--scale-hover));
+}
+
+/* Active state */
+.volume-envelope .keyframe-point:active {
+  cursor: grabbing;
+  transform: scale(var(--scale-active));
+}
+
+/* Selected state */
+.volume-envelope .keyframe-point.selected {
+  fill: var(--primary);
+  stroke: var(--surface-1);
+}
+
+/* Dragging state */
+.volume-envelope .keyframe-point.dragging {
+  cursor: grabbing;
+  fill: var(--primary);
+  stroke: var(--surface-1);
+  transform: scale(var(--scale-active));
+}
+
+/* Selection box */
+.selection-box {
+  fill: var(--accent-transparent);
+  stroke: var(--accent);
+  stroke-width: var(--stroke-width-sm);
+  pointer-events: none;
+  transition: all var(--animation-duration) var(--animation-easing);
+}
+
+/* Focus styles */
+.volume-envelope:focus-visible {
+  outline: var(--focus-outline-width) solid var(--primary);
+  outline-offset: var(--focus-outline-offset);
+}
+
+/* Remove default focus styles when using mouse */
+.volume-envelope:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* High contrast mode */
+@media (forced-colors: active) {
+  .volume-curve {
+    stroke: CanvasText;
+  }
+
+  .volume-envelope .keyframe-point {
+    fill: Canvas;
+    stroke: CanvasText;
+  }
+
+  .volume-envelope .keyframe-point:hover,
+  .volume-envelope .keyframe-point.selected,
+  .volume-envelope .keyframe-point.dragging {
+    fill: Highlight;
+    stroke: CanvasText;
+  }
+
+  .selection-box {
+    fill: none;
+    stroke: Highlight;
+  }
+
+  .volume-envelope:focus-visible {
+    outline-color: Highlight;
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .volume-curve,
+  .volume-envelope .keyframe-point,
+  .selection-box {
+    transition: none;
+  }
+
+  .volume-envelope .keyframe-point:hover {
+    transform: none;
+  }
+
+  .volume-envelope .keyframe-point:active,
+  .volume-envelope .keyframe-point.dragging {
+    transform: none;
+  }
+}
+
+/* Print styles */
+@media print {
+  .volume-envelope {
+    background: white;
+  }
+
+  .volume-curve {
+    stroke: black;
+  }
+
+  .volume-envelope .keyframe-point {
+    fill: white;
+    stroke: black;
+  }
+
+  .selection-box {
+    display: none;
+  }
+}

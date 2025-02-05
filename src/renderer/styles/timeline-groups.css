@@ -1,0 +1,174 @@
+.timeline-group-panel {
+  background: var(--surface-dark);
+  border-right: 1px solid var(--border-color);
+  width: 300px;
+  overflow-y: auto;
+  user-select: none;
+}
+
+.timeline-group {
+  border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+}
+
+.timeline-group:hover {
+  background: var(--surface-hover);
+}
+
+.timeline-group.selected {
+  background: var(--surface-selected);
+}
+
+.timeline-group-header {
+  display: flex;
+  align-items: center;
+  padding: 8px;
+  gap: 8px;
+  height: 32px;
+}
+
+.timeline-group-header .collapse-button {
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 10px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+}
+
+.timeline-group-header .collapse-button:hover {
+  background: var(--surface-hover);
+  border-radius: 3px;
+}
+
+.timeline-group-header .group-name {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.timeline-group-header .group-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.timeline-group-header button {
+  background: var(--surface-light);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 2px 6px;
+  font-size: 11px;
+  border-radius: 3px;
+  min-width: 24px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.timeline-group-header button:hover {
+  background: var(--surface-hover);
+}
+
+.timeline-group-header button.active {
+  background: var(--accent-color);
+  color: var(--text-on-accent);
+  border-color: var(--accent-color);
+}
+
+.timeline-group-header .mute-button,
+.timeline-group-header .solo-button {
+  font-weight: 600;
+}
+
+.timeline-group-header .remove-button {
+  color: var(--text-danger);
+  font-size: 14px;
+  padding: 0;
+  width: 20px;
+}
+
+.timeline-group-header .remove-button:hover {
+  background: var(--danger-color);
+  color: var(--text-on-danger);
+  border-color: var(--danger-color);
+}
+
+.timeline-group-header select {
+  background: var(--surface-light);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  height: 20px;
+  width: 100px;
+}
+
+.timeline-group-header select:hover {
+  background: var(--surface-hover);
+}
+
+.timeline-group-header input[type="number"] {
+  background: var(--surface-light);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  width: 50px;
+  height: 20px;
+  text-align: right;
+}
+
+.timeline-group-header input[type="number"]::-webkit-inner-spin-button {
+  opacity: 1;
+  background: var(--surface-hover);
+  border-left: 1px solid var(--border-color);
+  height: 18px;
+}
+
+.timeline-group-tracks {
+  padding: 4px 8px 8px 28px;
+  background: var(--surface-darker);
+  border-top: 1px solid var(--border-color);
+}
+
+.timeline-group-layer {
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 4px;
+  border-radius: 3px;
+  margin-bottom: 2px;
+}
+
+.timeline-group-layer:hover {
+  background: var(--surface-hover);
+}
+
+/* CSS Variables (to be added to your global styles) */
+:root {
+  --surface-dark: #2a2a2a;
+  --surface-darker: #242424;
+  --surface-light: #3a3a3a;
+  --surface-hover: #404040;
+  --surface-selected: #454545;
+  --border-color: #1a1a1a;
+  --text-primary: #ffffff;
+  --text-secondary: #b0b0b0;
+  --text-danger: #ff6b6b;
+  --accent-color: #007acc;
+  --danger-color: #cc3333;
+  --text-on-accent: #ffffff;
+  --text-on-danger: #ffffff;
+}

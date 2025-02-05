@@ -1,0 +1,1334 @@
+# Clip Extension Limit Implementation
+
+This document shows the key files and code sections that enforce the clip extension limit.
+
+## 1. useClipTrimming.ts
+
+import { useCallback } from 'react';
+import { useTimeline } from './useTimeline';
+import { Track, ProductionClip } from '../types/timeline';
+import { TimelineConstants } from '../utils/timelineConstants';
+import { logger } from '../utils/logger';
+
+export const useClipTrimming = () => {
+  const timeline = useTimeline();
+
+  const handleClipDrag = useCallback((
+    clip: ProductionClip,
+    track: Track,
+    newStartTime: number,
+    targetTrackId: string
+  ) => {
+    const duration = Math.min(clip.endTime - clip.startTime, clip.mediaDuration);
+    const maxStartTime = Math.max(0, timeline.duration - duration);
+    const constrainedStartTime = Math.max(0, Math.min(maxStartTime, newStartTime));
+
+    if (constrainedStartTime !== clip.startTime || targetTrackId !== track.id) {
+      logger.debug('[useClipTrimming] Moving clip =>', {
+        clipId: clip.id,
+        from: clip.startTime,
+        to: constrainedStartTime,
+        duration,
+        sourceTrack: track.id,
+        targetTrack: targetTrackId
+      });
+
+      // Dispatch the move
+      timeline.moveClip(clip.id, track.id, targetTrackId, constrainedStartTime);
+    }
+  }, [timeline]);
+
+  const handleTrimStart = useCallback((clip: ProductionClip, track: Track, newStartTime: number) => {
+    const minStartTime = 0; // Don't allow negative time
+    const maxStartTime = clip.endTime - TimelineConstants.MIN_DURATION;
+    const constrainedStartTime = Math.max(minStartTime, Math.min(maxStartTime, newStartTime));
+
+    if (Math.abs(constrainedStartTime - clip.startTime) > 0.01) {
+      logger.debug('[useClipTrimming] Trimming clip start =>', {
+        clipId: clip.id,
+        oldStart: clip.startTime,
+        newStart: constrainedStartTime
+      });
+
+      // When trimming start, adjust startPosition but don't go before mediaOffset
+      const deltaTime = constrainedStartTime - clip.startTime;
+      const currentStartPosition = clip.handles?.startPosition || clip.mediaOffset;
+      const newStartPosition = Math.max(clip.mediaOffset, currentStartPosition + deltaTime);
+      const newHandles = {
+        startPosition: newStartPosition,
+        endPosition: clip.handles?.endPosition || (clip.mediaOffset + (clip.endTime - clip.startTime))
+      };
+      timeline.trimClip(clip.id, constrainedStartTime, undefined, 1.0, { handles: newHandles });
+    }
+  }, [timeline]);
+
+  const handleTrimEnd = useCallback((clip: ProductionClip, track: Track, newEndTime: number) => {
+    const minEndTime = clip.startTime + TimelineConstants.MIN_DURATION;
+    const maxEndTime = clip.startTime + clip.mediaDuration;
+    const constrainedEndTime = Math.max(minEndTime, Math.min(maxEndTime, newEndTime));
+
+    if (Math.abs(constrainedEndTime - clip.endTime) > 0.01) {
+      logger.debug('[useClipTrimming] Trimming clip end =>', {
+        clipId: clip.id,
+        oldEnd: clip.endTime,
+        newEnd: constrainedEndTime
+      });
+
+      // Update end handle position to match timeline position
+      const newHandles = {
+        startPosition: clip.handles?.startPosition || clip.mediaOffset,
+        endPosition: clip.mediaOffset + (constrainedEndTime - clip.startTime)
+      };
+      timeline.trimClip(clip.id, undefined, constrainedEndTime, 1.0, { handles: newHandles });
+    }
+  }, [timeline]);
+
+  const handleSplitClip = useCallback((clip: ProductionClip, splitTime: number, track: Track) => {
+    if (splitTime > clip.startTime && splitTime < clip.endTime) {
+      logger.debug('[useClipTrimming] Splitting clip =>', {
+        clipId: clip.id,
+        at: splitTime
+      });
+      timeline.splitClip(track.id, clip.id, splitTime);
+    }
+  }, [timeline]);
+
+  return {
+    handleTrimStart,
+    handleTrimEnd,
+    handleSplitClip,
+    handleClipDrag,
+  };
+};
+
+
+## 2. TimelineContext.tsx
+
+import React, { createContext, useReducer, useContext } from 'react';
+import { produce } from 'immer';
+import {
+  TimelineState,
+  TimelineAction,
+  ActionTypes,
+  initialTimelineState,
+  isMediaClip
+} from '../types/timeline';
+import { applyStateDiff, createStateDiff, StateDiff } from '../utils/historyDiff';
+import { TimelineConstants } from '../utils/timelineConstants';
+import { logger } from '../utils/logger';
+
+export interface TimelineContextValue {
+  state: TimelineState;
+  dispatch: React.Dispatch<TimelineAction>;
+}
+
+export const TimelineContext = createContext<TimelineContextValue | undefined>(undefined);
+
+// Actions that should not be added to history
+const NON_UNDOABLE_ACTIONS = new Set<ActionTypes>([
+  ActionTypes.SET_CURRENT_TIME,
+  ActionTypes.SET_PLAYING,
+  ActionTypes.SET_SCROLL_X,
+  ActionTypes.SET_SCROLL_Y,
+  ActionTypes.SET_DRAGGING,
+  ActionTypes.SET_ERROR,
+  ActionTypes.RESTORE_SNAPSHOT,
+  ActionTypes.SET_IS_PLAYING,
+  ActionTypes.SET_IS_DRAGGING,
+  ActionTypes.SET_SELECTED_CLIP_IDS,
+  ActionTypes.SET_SELECTED_TRACK_ID,
+  ActionTypes.SET_DURATION
+]);
+
+// Actions that should create a new history checkpoint
+const CHECKPOINT_ACTIONS = new Set<ActionTypes>([
+  ActionTypes.ADD_TRACK,
+  ActionTypes.REMOVE_TRACK,
+  ActionTypes.ADD_CLIP,
+  ActionTypes.REMOVE_CLIP,
+  ActionTypes.SPLIT_CLIP,
+  ActionTypes.SET_TRACKS,
+  ActionTypes.MOVE_TRACK,
+  ActionTypes.MOVE_CLIP
+]);
+
+export const timelineReducer = (state: TimelineState, action: TimelineAction): TimelineState => {
+  return produce(state, draft => {
+    let shouldCreateHistoryEntry = false;
+    let historyDescription = '';
+    let beforeState = state;
+    let isCheckpoint = false;
+
+    // Pre-process action to determine if it should be added to history
+    if (!NON_UNDOABLE_ACTIONS.has(action.type)) {
+      shouldCreateHistoryEntry = true;
+      historyDescription = getHistoryDescription(action);
+      beforeState = { ...state };
+      isCheckpoint = CHECKPOINT_ACTIONS.has(action.type);
+
+      logger.debug('Processing action:', {
+        type: action.type,
+        isCheckpoint,
+        description: historyDescription
+      });
+    }
+
+    // Apply the action
+    switch (action.type) {
+      case ActionTypes.SET_STATE:
+        return action.payload;
+
+      case ActionTypes.SET_DURATION:
+        draft.duration = action.payload;
+        logger.debug('Timeline duration updated:', {
+          oldDuration: state.duration,
+          newDuration: action.payload
+        });
+        break;
+
+      case ActionTypes.SET_TRACKS:
+        draft.tracks = action.payload;
+        break;
+
+      case ActionTypes.SET_CURRENT_TIME:
+        draft.currentTime = action.payload.time;
+        break;
+
+      case ActionTypes.SET_PLAYING:
+        draft.isPlaying = action.payload;
+        break;
+
+      case ActionTypes.SET_SCROLL_X:
+        draft.scrollX = action.payload;
+        break;
+
+      case ActionTypes.SET_SCROLL_Y:
+        draft.scrollY = action.payload;
+        break;
+
+      case ActionTypes.SET_ZOOM:
+        draft.zoom = action.payload;
+        break;
+
+      case ActionTypes.SET_FPS:
+        draft.fps = action.payload;
+        break;
+
+      case ActionTypes.SET_DRAGGING:
+        draft.isDragging = action.payload.isDragging;
+        draft.dragStartX = action.payload.dragStartX;
+        draft.dragStartY = action.payload.dragStartY;
+        break;
+
+      case ActionTypes.SET_ERROR:
+        draft.error = action.payload;
+        break;
+
+      case ActionTypes.ADD_TRACK:
+        draft.tracks.push(action.payload.track);
+        break;
+
+      case ActionTypes.UPDATE_TRACK:
+        const trackIndex = draft.tracks.findIndex(t => t.id === action.payload.trackId);
+        if (trackIndex !== -1) {
+          const oldTrack = { ...draft.tracks[trackIndex] };
+          
+          if (typeof action.payload.changes === 'function') {
+            const updates = action.payload.changes(oldTrack);
+            draft.tracks[trackIndex] = {
+              ...oldTrack,
+              ...updates
+            };
+          } else {
+            const { track, isEditing } = action.payload;
+            const trackUpdates = {
+              ...track,
+              name: track.name !== undefined ? String(track.name) : oldTrack.name,
+              isEditing: isEditing ?? oldTrack.isEditing
+            };
+            
+            draft.tracks[trackIndex] = {
+              ...oldTrack,
+              ...trackUpdates
+            };
+          }
+
+          // Create history entry for track update
+          if (!NON_UNDOABLE_ACTIONS.has(action.type)) {
+            // Remove future entries if we're not at the end
+            if (draft.history.currentIndex < draft.history.entries.length - 1) {
+              draft.history.entries = draft.history.entries.slice(0, draft.history.currentIndex + 1);
+            }
+
+            // Create a new history entry
+            const diff: StateDiff = {
+              type: 'full',
+              description: typeof action.payload.changes === 'function'
+                ? 'Update track'
+                : action.payload.track?.name 
+                  ? `Rename track to "${action.payload.track.name}"`
+                  : 'Update track',
+              timestamp: Date.now(),
+              snapshot: { ...beforeState }
+            };
+
+            // Add new entry and update index
+            draft.history.entries.push(diff);
+            draft.history.currentIndex = draft.history.entries.length - 1;
+
+            // Maintain max size
+            if (draft.history.entries.length > TimelineConstants.History.MAX_HISTORY_SIZE) {
+              draft.history.entries = draft.history.entries.slice(-TimelineConstants.History.MAX_HISTORY_SIZE);
+              draft.history.currentIndex = draft.history.entries.length - 1;
+            }
+          }
+        }
+        break;
+
+      case ActionTypes.REMOVE_TRACK:
+        draft.tracks = draft.tracks.filter(t => t.id !== action.payload.trackId);
+        break;
+
+      case ActionTypes.ADD_CLIP:
+        const trackToAddClip = draft.tracks.find(t => t.id === action.payload.trackId);
+        if (trackToAddClip) {
+          // Find the highest layer number currently in use
+          const maxLayer = trackToAddClip.clips.reduce((max, clip) => 
+            Math.max(max, clip.layer || 0), -1);
+          
+          // Add clip to next available layer
+          trackToAddClip.clips.push({
+            ...action.payload.clip,
+            layer: action.payload.clip.layer ?? maxLayer + 1
+          });
+        }
+        break;
+
+      case ActionTypes.UPDATE_CLIP:
+        const trackWithClip = draft.tracks.find(t => t.id === action.payload.trackId);
+        if (trackWithClip) {
+          const clipIndex = trackWithClip.clips.findIndex(c => c.id === action.payload.clipId);
+          if (clipIndex !== -1) {
+            trackWithClip.clips[clipIndex] = {
+              ...trackWithClip.clips[clipIndex],
+              ...action.payload.clip
+            };
+          }
+        }
+        break;
+
+      case ActionTypes.REMOVE_CLIP:
+        const trackToRemoveClip = draft.tracks.find(t => t.id === action.payload.trackId);
+        if (trackToRemoveClip) {
+          trackToRemoveClip.clips = trackToRemoveClip.clips.filter(c => c.id !== action.payload.clipId);
+        }
+        break;
+
+      case ActionTypes.MOVE_CLIP:
+        const sourceTrack = draft.tracks.find(t => t.id === action.payload.sourceTrackId);
+        const targetTrack = draft.tracks.find(t => t.id === action.payload.targetTrackId);
+        if (sourceTrack && targetTrack) {
+          const clipToMove = sourceTrack.clips.find(c => c.id === action.payload.clipId);
+          if (clipToMove) {
+            logger.debug('Moving clip:', {
+              clipId: clipToMove.id,
+              from: clipToMove.startTime,
+              to: action.payload.newTime,
+              sourceTrack: sourceTrack.id,
+              targetTrack: targetTrack.id
+            });
+
+            // Calculate new times
+            const duration = Math.min(
+              clipToMove.endTime - clipToMove.startTime,
+              clipToMove.mediaDuration
+            );
+            const newStartTime = Math.max(0, action.payload.newTime);
+            const newEndTime = newStartTime + duration;
+
+            // Create updated clip with new times, maintaining handle positions relative to clip
+            const deltaTime = newStartTime - clipToMove.startTime;
+            const updatedClip = {
+              ...clipToMove,
+              startTime: newStartTime,
+              endTime: newEndTime,
+              handles: clipToMove.handles ? {
+                startPosition: clipToMove.handles.startPosition + deltaTime,
+                endPosition: clipToMove.handles.startPosition + deltaTime + duration
+              } : undefined
+            };
+
+            logger.debug('Updated clip handles during move:', {
+              clipId: clipToMove.id,
+              deltaTime,
+              oldHandles: clipToMove.handles,
+              newHandles: updatedClip.handles
+            });
+
+            logger.debug('Updated clip position:', {
+              clipId: clipToMove.id,
+              oldStart: clipToMove.startTime,
+              oldEnd: clipToMove.endTime,
+              newStart: newStartTime,
+              newEnd: newEndTime,
+              duration
+            });
+
+            // Update clip in place if same track
+            if (sourceTrack.id === targetTrack.id) {
+              const clipIndex = sourceTrack.clips.findIndex(c => c.id === clipToMove.id);
+              if (clipIndex !== -1) {
+                sourceTrack.clips[clipIndex] = updatedClip;
+              }
+            } else {
+              // Move to different track
+              sourceTrack.clips = sourceTrack.clips.filter(c => c.id !== clipToMove.id);
+              targetTrack.clips.push(updatedClip);
+            }
+
+            // Move operations are already handled by the general history mechanism
+            // through shouldCreateHistoryEntry and CHECKPOINT_ACTIONS
+          }
+        }
+        break;
+
+      case ActionTypes.SPLIT_CLIP:
+        const trackToSplit = draft.tracks.find(t => t.id === action.payload.trackId);
+        if (trackToSplit) {
+          const clipToSplit = trackToSplit.clips.find(c => c.id === action.payload.clipId);
+          if (clipToSplit && action.payload.time > clipToSplit.startTime && action.payload.time < clipToSplit.endTime) {
+            // Get initial bounds for limiting extension
+            const initialBounds = clipToSplit.initialBounds || {
+              startTime: clipToSplit.startTime,
+              endTime: clipToSplit.startTime + clipToSplit.mediaDuration,
+              mediaOffset: clipToSplit.mediaOffset,
+              mediaDuration: clipToSplit.mediaDuration
+            };
+
+            // Calculate maximum allowed end position
+            const maxEndPosition = initialBounds.mediaOffset + initialBounds.mediaDuration;
+
+            // Calculate split position in media space
+            const splitOffset = action.payload.time - clipToSplit.startTime;
+            const splitMediaPosition = (clipToSplit.handles?.startPosition || clipToSplit.mediaOffset) + splitOffset;
+
+            // Create two new clips from the split with proper handle positions
+            const firstClip = {
+              ...clipToSplit,
+              id: `${clipToSplit.id}-1`,
+              endTime: action.payload.time,
+              handles: {
+                startPosition: clipToSplit.handles?.startPosition || clipToSplit.mediaOffset,
+                endPosition: Math.min(splitMediaPosition, maxEndPosition)
+              }
+            };
+            const secondClip = {
+              ...clipToSplit,
+              id: `${clipToSplit.id}-2`,
+              startTime: action.payload.time,
+              endTime: clipToSplit.endTime,
+              handles: {
+                startPosition: Math.min(splitMediaPosition, maxEndPosition),
+                endPosition: Math.min(
+                  clipToSplit.handles?.endPosition || (clipToSplit.mediaOffset + (clipToSplit.endTime - clipToSplit.startTime)),
+                  maxEndPosition
+                )
+              }
+            };
+
+            logger.debug('Split clip with handles:', {
+              clipId: clipToSplit.id,
+              splitTime: action.payload.time,
+              splitMediaPosition,
+              firstClipHandles: firstClip.handles,
+              secondClipHandles: secondClip.handles
+            });
+            // Replace original clip with split clips
+            trackToSplit.clips = trackToSplit.clips.filter(c => c.id !== clipToSplit.id);
+            trackToSplit.clips.push(firstClip, secondClip);
+          }
+        }
+        break;
+
+      case ActionTypes.TRIM_CLIP:
+        for (const track of draft.tracks) {
+          const clipToTrim = track.clips.find(c => c.id === action.payload.clipId);
+          if (clipToTrim) {
+            logger.debug('Trimming clip:', {
+              clipId: clipToTrim.id,
+              oldStart: clipToTrim.startTime,
+              oldEnd: clipToTrim.endTime,
+              newStart: action.payload.startTime,
+              newEnd: action.payload.endTime
+            });
+
+            const clipIndex = track.clips.findIndex(c => c.id === clipToTrim.id);
+            if (clipIndex !== -1) {
+            // Get initial bounds for limiting extension
+            const initialBounds = clipToTrim.initialBounds || {
+              startTime: clipToTrim.startTime,
+              endTime: clipToTrim.startTime + clipToTrim.mediaDuration,
+              mediaOffset: clipToTrim.mediaOffset,
+              mediaDuration: clipToTrim.mediaDuration
+            };
+
+            // Calculate maximum allowed end position
+            const maxEndPosition = initialBounds.mediaOffset + initialBounds.mediaDuration;
+            const currentStartPosition = clipToTrim.handles?.startPosition || clipToTrim.mediaOffset;
+
+            // If trimming end, ensure we don't exceed media duration
+            const newEndTime = action.payload.endTime !== undefined 
+              ? Math.min(
+                  action.payload.endTime,
+                  clipToTrim.startTime + clipToTrim.mediaDuration
+                )
+              : clipToTrim.endTime;
+
+            // Update clip with constrained times and handles
+            track.clips[clipIndex] = {
+              ...clipToTrim,
+              startTime: action.payload.startTime !== undefined ? action.payload.startTime : clipToTrim.startTime,
+              endTime: newEndTime,
+              ...(action.payload.handles && { handles: action.payload.handles })
+            };
+
+            logger.debug('Updated clip handles:', {
+              clipId: clipToTrim.id,
+              oldHandles: clipToTrim.handles,
+              newHandles: action.payload.handles
+            });
+            }
+            break;
+          }
+        }
+        break;
+
+      case ActionTypes.UPDATE_CAPTION_STYLES:
+        for (const track of draft.tracks) {
+          const captionClip = track.clips.find(clip => 
+            clip.type === 'caption' && 
+            clip.captions?.some(c => action.payload.captionIds.includes(c.id))
+          );
+          if (captionClip && captionClip.type === 'caption') {
+            captionClip.speakerStyles = {
+              ...captionClip.speakerStyles,
+              ...action.payload.style
+            };
+          }
+        }
+        break;
+
+      case ActionTypes.SELECT_TRACK:
+        draft.selectedTrackId = action.payload.trackId;
+        break;
+
+      case ActionTypes.SELECT_CLIPS:
+        draft.selectedClipIds = action.payload.clipIds;
+        break;
+
+      case ActionTypes.PUSH_HISTORY:
+        // Remove future entries if we're not at the end
+        if (draft.history.currentIndex < draft.history.entries.length - 1) {
+          draft.history.entries = draft.history.entries.slice(0, draft.history.currentIndex + 1);
+        }
+
+        const entry = action.payload.entry;
+
+        // Add new entry
+        draft.history.entries.push(entry);
+
+        // Maintain max size
+        if (draft.history.entries.length > TimelineConstants.History.MAX_HISTORY_SIZE) {
+          // Keep the first entry (initial state) and remove oldest non-checkpoint entries
+          const entries = draft.history.entries;
+          const checkpoints = entries.filter((e, i) => i === 0 || e.type === 'full');
+          const nonCheckpoints = entries.filter((e, i) => i !== 0 && e.type !== 'full');
+          
+          // Remove oldest non-checkpoints to get under max size
+          const toRemove = entries.length - TimelineConstants.History.MAX_HISTORY_SIZE;
+          nonCheckpoints.splice(0, toRemove);
+
+          // Reconstruct history with remaining entries
+          draft.history.entries = [
+            entries[0],
+            ...checkpoints.slice(1),
+            ...nonCheckpoints
+          ].slice(-TimelineConstants.History.MAX_HISTORY_SIZE);
+
+          logger.debug('History pruned:', {
+            checkpoints: checkpoints.length,
+            nonCheckpoints: nonCheckpoints.length,
+            removed: toRemove
+          });
+        }
+
+        // Update current index
+        draft.history.currentIndex = draft.history.entries.length - 1;
+
+        logger.debug('History updated:', {
+          entries: draft.history.entries.length,
+          currentIndex: draft.history.currentIndex,
+          type: entry.type
+        });
+        break;
+
+      case ActionTypes.RESTORE_SNAPSHOT:
+        Object.assign(draft, action.payload);
+        break;
+
+      case ActionTypes.SET_HISTORY_INDEX:
+        draft.history.currentIndex = action.payload;
+        break;
+
+      case ActionTypes.CLEAR_HISTORY:
+        // Keep initial state as a checkpoint
+        const initialEntry = draft.history.entries[0];
+        if (initialEntry) {
+          initialEntry.type = 'full';
+          initialEntry.snapshot = { ...state };
+        }
+        draft.history.entries = initialEntry ? [initialEntry] : [];
+        draft.history.currentIndex = -1;
+        break;
+
+      case ActionTypes.UNDO:
+        if (draft.history.currentIndex > 0) {
+          let targetIndex = draft.history.currentIndex - 1;
+          const prevDiff = draft.history.entries[draft.history.currentIndex];
+
+          // If current entry is not a checkpoint, keep going until we hit one
+          while (
+            targetIndex > 0 &&
+            prevDiff.type !== 'full' &&
+            draft.history.entries[targetIndex].type !== 'full'
+          ) {
+            targetIndex--;
+          }
+
+          logger.debug('Undoing to checkpoint:', {
+            from: draft.history.currentIndex,
+            to: targetIndex,
+            type: draft.history.entries[targetIndex].type
+          });
+
+          // Apply all diffs from target to current
+          let currentState = state;
+          for (let i = targetIndex; i <= draft.history.currentIndex; i++) {
+            currentState = applyStateDiff(currentState, draft.history.entries[i], true);
+          }
+
+          draft.history.currentIndex = targetIndex;
+          Object.assign(draft, currentState);
+        }
+        break;
+
+      case ActionTypes.REDO:
+        if (draft.history.currentIndex < draft.history.entries.length - 1) {
+          let targetIndex = draft.history.currentIndex + 1;
+          const nextDiff = draft.history.entries[targetIndex];
+
+          // If next entry is not a checkpoint, keep going until we hit one
+          while (
+            targetIndex < draft.history.entries.length - 1 &&
+            nextDiff.type !== 'full' &&
+            draft.history.entries[targetIndex + 1].type !== 'full'
+          ) {
+            targetIndex++;
+          }
+
+          logger.debug('Redoing to checkpoint:', {
+            from: draft.history.currentIndex,
+            to: targetIndex,
+            type: draft.history.entries[targetIndex].type
+          });
+
+          // Apply all diffs from current to target
+          let currentState = state;
+          for (let i = draft.history.currentIndex + 1; i <= targetIndex; i++) {
+            currentState = applyStateDiff(currentState, draft.history.entries[i]);
+          }
+
+          draft.history.currentIndex = targetIndex;
+          Object.assign(draft, currentState);
+        }
+        break;
+
+      default:
+        logger.warn('Unknown action type:', action);
+        draft.error = `Unknown action type: ${action.type}`;
+    }
+
+    // Post-process action to create history entry if needed
+    if (shouldCreateHistoryEntry) {
+      const diff = createStateDiff(beforeState, draft as TimelineState, historyDescription, isCheckpoint);
+      draft.history.entries.push(diff);
+      if (draft.history.entries.length > TimelineConstants.History.MAX_HISTORY_SIZE) {
+        draft.history.entries = draft.history.entries.slice(-TimelineConstants.History.MAX_HISTORY_SIZE);
+      }
+      draft.history.currentIndex = draft.history.entries.length - 1;
+    }
+  });
+};
+
+const getHistoryDescription = (action: TimelineAction): string => {
+  switch (action.type) {
+    case ActionTypes.ADD_TRACK:
+      return 'Add track';
+    case ActionTypes.REMOVE_TRACK:
+      return 'Remove track';
+    case ActionTypes.ADD_CLIP:
+      return 'Add clip';
+    case ActionTypes.REMOVE_CLIP:
+      return 'Remove clip';
+    case ActionTypes.MOVE_CLIP:
+      return 'Move clip';
+    case ActionTypes.SPLIT_CLIP:
+      return 'Split clip';
+    case ActionTypes.TRIM_CLIP:
+      return 'Trim clip';
+    case ActionTypes.SET_ZOOM:
+      return 'Change zoom';
+    case ActionTypes.SET_FPS:
+      return 'Change FPS';
+    default:
+      return action.type;
+  }
+};
+
+export const TimelineProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [state, dispatch] = useReducer(timelineReducer, initialTimelineState);
+
+  // Expose state and dispatch to window for testing
+  if (process.env.NODE_ENV === 'development') {
+    (window as any).timelineState = state;
+    (window as any).timelineDispatch = dispatch;
+  }
+
+  return (
+    <TimelineContext.Provider value={{ state, dispatch }}>
+      {children}
+    </TimelineContext.Provider>
+  );
+};
+
+export const useTimelineContext = () => {
+  const context = useContext(TimelineContext);
+  if (!context) {
+    throw new Error('useTimelineContext must be used within a TimelineProvider');
+  }
+  return context;
+};
+
+## 3. TimelineClip.tsx
+
+import React, { useCallback, useState, CSSProperties, useRef, useEffect } from 'react';
+import { ClipWithLayer, isVideoClip, isAudioClip, isCaptionClip, Track, ActionTypes } from '../types/timeline';
+import { VideoClipContent } from './clips/VideoClipContent';
+import { AudioClipContent } from './clips/AudioClipContent';
+import { CaptionClipContent } from './clips/CaptionClipContent';
+import { formatTime } from '../utils/timelineUnits';
+import { timeToPixels, pixelsToTime, getPixelsPerSecond, getPixelsPerFrame } from '../utils/timelineScale';
+import { TimelineConstants } from '../utils/timelineConstants';
+import { useRippleEdit } from '../hooks/useRippleEdit';
+import { useTimelineContext } from '../hooks/useTimelineContext';
+import { useTimeline } from '../hooks/useTimeline';
+import { useSnapPoints } from '../hooks/useSnapPoints';
+import { logger } from '../utils/logger';
+import { clampTime, VALIDATION, validateClipTrim } from '../utils/timeValidation';
+
+interface TimelineClipProps {
+  clip: ClipWithLayer;
+  track: Track;
+  layer: number;
+  zoom: number;
+  fps: number;
+  onSelect: () => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+  tabIndex?: number;
+  'aria-posinset'?: number;
+  'aria-setsize'?: number;
+  style?: CSSProperties;
+}
+
+const KEYBOARD_MOVE_STEP = 1;
+const KEYBOARD_MOVE_FAST = 10;
+const TRACK_LABEL_WIDTH = 160;
+const SNAP_THRESHOLD = 5;
+
+export const TimelineClip: React.FC<TimelineClipProps> = ({
+  clip,
+  track,
+  layer,
+  zoom,
+  fps,
+  onSelect,
+  onDragStart,
+  onDragEnd,
+  tabIndex = 0,
+  'aria-posinset': posinset,
+  'aria-setsize': setsize,
+  style
+}) => {
+  const [isKeyboardDragging, setIsKeyboardDragging] = useState(false);
+  const [isAtLimit, setIsAtLimit] = useState(false);
+  const { rippleDelete, rippleTrim } = useRippleEdit();
+  const { state, dispatch } = useTimelineContext();
+  const timeline = useTimeline();
+  const { getAllSnapPoints, findNearestSnapPoint } = useSnapPoints(fps);
+  const clipRef = useRef<HTMLDivElement>(null);
+
+  interface DragState {
+    isDragging: boolean;
+    isTrimming: 'start' | 'end' | null;
+    pointerDownX: number;
+    originalStartPixels: number;
+    originalEndPixels: number;
+    pointerId: number;
+    scrollX: number;
+    lastDeltaPixels: number;
+  }
+
+  const dragStateRef = React.useRef<DragState>({
+    isDragging: false,
+    isTrimming: null,
+    pointerDownX: 0,
+    originalStartPixels: 0,
+    originalEndPixels: 0,
+    pointerId: -1,
+    scrollX: 0,
+    lastDeltaPixels: 0
+  });
+
+  const [isDragging, setIsDragging] = useState(false);
+  const [isTrimming, setIsTrimming] = useState<'start' | 'end' | null>(null);
+
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent, trimSide?: 'trim-start' | 'trim-end') => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const target = e.currentTarget;
+      target.setPointerCapture(e.pointerId);
+      
+      const isTrimmingMode = trimSide ? (trimSide === 'trim-start' ? 'start' : 'end') : null;
+      
+      const originalStartPixels = timeToPixels(clip.startTime, zoom);
+      const originalEndPixels = timeToPixels(clip.endTime, zoom);
+      
+      dragStateRef.current = {
+        isDragging: !isTrimmingMode,
+        isTrimming: isTrimmingMode,
+        pointerDownX: e.clientX - TRACK_LABEL_WIDTH,
+        originalStartPixels,
+        originalEndPixels,
+        pointerId: e.pointerId,
+        scrollX: state.scrollX,
+        lastDeltaPixels: 0
+      };
+
+      if (clipRef.current) {
+        clipRef.current.style.transform = '';
+        clipRef.current.style.transition = 'none';
+      }
+
+      onSelect();
+      onDragStart();
+      
+      setIsDragging(!isTrimmingMode);
+      setIsTrimming(isTrimmingMode);
+      setIsAtLimit(false);
+
+      dispatch({
+        type: ActionTypes.SET_DRAGGING,
+        payload: {
+          isDragging: true,
+          dragStartX: e.clientX - TRACK_LABEL_WIDTH,
+          dragStartY: e.clientY
+        }
+      });
+    },
+    [onSelect, onDragStart, clip, state.scrollX, zoom, dispatch]
+  );
+
+  const handlePointerMove = useCallback(
+    (e: PointerEvent) => {
+      const dragState = dragStateRef.current;
+      if (!dragState.isDragging && !dragState.isTrimming) return;
+      if (e.pointerId !== dragState.pointerId) return;
+
+      const scrollDelta = state.scrollX - dragState.scrollX;
+      const pointerDelta = (e.clientX - TRACK_LABEL_WIDTH) - dragState.pointerDownX;
+      const deltaPixels = pointerDelta + scrollDelta;
+
+      if (clipRef.current) {
+        if (dragState.isDragging) {
+          clipRef.current.style.left = `${dragState.originalStartPixels + deltaPixels}px`;
+        } else if (dragState.isTrimming === 'start') {
+          const initialDuration = dragState.originalEndPixels - dragState.originalStartPixels;
+          const newLeft = dragState.originalStartPixels + deltaPixels;
+          const newDuration = initialDuration - deltaPixels;
+          const minDurationPixels = timeToPixels(TimelineConstants.MIN_DURATION, zoom);
+          
+          if (newDuration >= minDurationPixels) {
+            clipRef.current.style.left = `${newLeft}px`;
+            dragStateRef.current.lastDeltaPixels = deltaPixels;
+            setIsAtLimit(false);
+          } else {
+            setIsAtLimit(true);
+          }
+        } else if (dragState.isTrimming === 'end') {
+          const initialBounds = clip.initialBounds || {
+            startTime: clip.startTime,
+            endTime: clip.startTime + clip.mediaDuration,
+            mediaOffset: clip.mediaOffset,
+            mediaDuration: clip.mediaDuration
+          };
+
+          const newWidth = (dragState.originalEndPixels - dragState.originalStartPixels) + deltaPixels;
+          const maxWidth = timeToPixels(clip.mediaDuration, zoom);
+          const minDurationPixels = timeToPixels(TimelineConstants.MIN_DURATION, zoom);
+          const clampedWidth = Math.max(minDurationPixels, Math.min(maxWidth, newWidth));
+          
+          clipRef.current.style.width = `${clampedWidth}px`;
+          
+          const actualDelta = clampedWidth - (dragState.originalEndPixels - dragState.originalStartPixels);
+          dragStateRef.current.lastDeltaPixels = actualDelta;
+          
+          // Set at-limit state if we're at max extension
+          setIsAtLimit(Math.abs(clampedWidth - maxWidth) < 1);
+        }
+        clipRef.current.style.transition = 'none';
+      }
+
+      dragStateRef.current.lastDeltaPixels = deltaPixels;
+    },
+    [clip, zoom, state]
+  );
+
+  const handlePointerUp = useCallback(
+    (e: PointerEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.hasPointerCapture(e.pointerId)) {
+        target.releasePointerCapture(e.pointerId);
+      }
+
+      if (dragStateRef.current.isDragging) {
+        const finalPixelPos = dragStateRef.current.originalStartPixels + dragStateRef.current.lastDeltaPixels;
+        const newStartTime = pixelsToTime(finalPixelPos, zoom);
+        timeline.moveClip(clip.id, track.id, track.id, newStartTime);
+      } else if (dragStateRef.current.isTrimming === 'start') {
+        const finalPixelPos = dragStateRef.current.originalStartPixels + dragStateRef.current.lastDeltaPixels;
+        const newStart = pixelsToTime(finalPixelPos, zoom);
+        timeline.trimClip(clip.id, newStart, undefined);
+      } else if (dragStateRef.current.isTrimming === 'end') {
+        const finalPixelPos = dragStateRef.current.originalEndPixels + dragStateRef.current.lastDeltaPixels;
+        const newEnd = pixelsToTime(finalPixelPos, zoom);
+        const constrainedEndTime = Math.min(
+          newEnd,
+          clip.startTime + clip.mediaDuration
+        );
+        timeline.trimClip(clip.id, undefined, constrainedEndTime);
+      }
+
+      if (clipRef.current) {
+        clipRef.current.style.left = `${timeToPixels(clip.startTime, zoom)}px`;
+        clipRef.current.style.width = `${timeToPixels(clip.endTime - clip.startTime, zoom)}px`;
+        clipRef.current.style.transition = 'none';
+      }
+
+      dragStateRef.current = {
+        isDragging: false,
+        isTrimming: null,
+        pointerDownX: 0,
+        originalStartPixels: 0,
+        originalEndPixels: 0,
+        pointerId: -1,
+        scrollX: 0,
+        lastDeltaPixels: 0
+      };
+
+      setIsDragging(false);
+      setIsTrimming(null);
+      setIsAtLimit(false);
+      onDragEnd();
+
+      dispatch({
+        type: ActionTypes.SET_DRAGGING,
+        payload: {
+          isDragging: false,
+          dragStartX: 0,
+          dragStartY: 0
+        }
+      });
+    },
+    [onDragEnd, clip, zoom, dispatch, timeline, track.id]
+  );
+
+  useEffect(() => {
+    if (isDragging || isTrimming) {
+      window.addEventListener('pointermove', handlePointerMove);
+      window.addEventListener('pointerup', handlePointerUp);
+      window.addEventListener('pointercancel', handlePointerUp);
+
+      return () => {
+        window.removeEventListener('pointermove', handlePointerMove);
+        window.removeEventListener('pointerup', handlePointerUp);
+        window.removeEventListener('pointercancel', handlePointerUp);
+      };
+    }
+  }, [isDragging, isTrimming, handlePointerMove, handlePointerUp]);
+
+  const moveClip = useCallback(
+    (frameOffset: number) => {
+      const frameDuration = 1 / fps;
+      const timeOffset = frameOffset * frameDuration;
+      const newStartTime = clip.startTime + timeOffset;
+      const newEndTime = clip.endTime + timeOffset;
+      
+      if (timeOffset < 0) {
+        rippleTrim(clip, track, 'in', newStartTime);
+      } else {
+        rippleTrim(clip, track, 'out', newEndTime);
+      }
+    },
+    [clip, track, fps, rippleTrim]
+  );
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      switch (e.key) {
+        case 'Enter':
+        case ' ':
+          e.preventDefault();
+          onSelect();
+          break;
+        case 'Delete':
+        case 'Backspace':
+          e.preventDefault();
+          rippleDelete(clip, track);
+          break;
+        case 'm':
+          if (!isKeyboardDragging) {
+            e.preventDefault();
+            setIsKeyboardDragging(true);
+            onDragStart();
+          }
+          break;
+        case 'ArrowLeft':
+          if (isKeyboardDragging) {
+            e.preventDefault();
+            moveClip(e.shiftKey ? -KEYBOARD_MOVE_FAST : -KEYBOARD_MOVE_STEP);
+          }
+          break;
+        case 'ArrowRight':
+          if (isKeyboardDragging) {
+            e.preventDefault();
+            moveClip(e.shiftKey ? KEYBOARD_MOVE_FAST : KEYBOARD_MOVE_STEP);
+          }
+          break;
+        case 'Escape':
+          if (isKeyboardDragging) {
+            e.preventDefault();
+            setIsKeyboardDragging(false);
+            onDragEnd();
+          }
+          break;
+      }
+    },
+    [isKeyboardDragging, onSelect, onDragStart, onDragEnd, moveClip, clip, track, rippleDelete]
+  );
+
+  const renderClipContent = () => {
+    if (isVideoClip(clip)) {
+      return (
+        <VideoClipContent
+          clip={clip}
+          isSelected={state.selectedClipIds.includes(clip.id)}
+          zoom={zoom}
+          fps={fps}
+        />
+      );
+    }
+    if (isAudioClip(clip)) {
+      return (
+        <AudioClipContent
+          clip={clip}
+          isSelected={state.selectedClipIds.includes(clip.id)}
+          zoom={zoom}
+          fps={fps}
+        />
+      );
+    }
+    if (isCaptionClip(clip)) {
+      return (
+        <CaptionClipContent
+          clip={clip}
+          isSelected={state.selectedClipIds.includes(clip.id)}
+          zoom={zoom}
+          fps={fps}
+        />
+      );
+    }
+    return null;
+  };
+
+  const startTimeFormatted = formatTime(clip.startTime, { fps, showFrames: true });
+  const endTimeFormatted = formatTime(clip.endTime, { fps, showFrames: true });
+  const durationFormatted = formatTime(clip.endTime - clip.startTime, { fps, showFrames: true });
+
+  const clipStyle: CSSProperties = {
+    position: 'absolute',
+    left: timeToPixels(clip.startTime, zoom),
+    width: timeToPixels(clip.endTime - clip.startTime, zoom),
+    height: '100%',
+    cursor: isKeyboardDragging ? 'move' : dragStateRef.current.isTrimming ? 'col-resize' : isDragging ? 'grabbing' : 'grab',
+    top: style?.top,
+    willChange: isDragging ? 'transform' : undefined,
+    touchAction: 'none',
+    userSelect: 'none',
+    pointerEvents: 'auto',
+    zIndex: isDragging || isTrimming ? 100 : 1
+  };
+
+  return (
+    <div
+      ref={clipRef}
+      className={`timeline-clip ${clip.type} ${isKeyboardDragging ? 'keyboard-dragging' : ''} ${
+        state.selectedClipIds.includes(clip.id) ? 'selected' : ''
+      }`}
+      style={clipStyle}
+      onPointerDown={handlePointerDown}
+      onKeyDown={handleKeyDown}
+      role="listitem"
+      aria-label={`${clip.name} clip from ${startTimeFormatted} to ${endTimeFormatted}, duration ${durationFormatted}`}
+      aria-grabbed={isKeyboardDragging}
+      aria-dropeffect="move"
+      tabIndex={tabIndex}
+      aria-posinset={posinset}
+      aria-setsize={setsize}
+      data-clip-id={clip.id}
+      data-moving={isDragging || isTrimming ? 'true' : undefined}
+      data-trimming={isTrimming || undefined}
+      data-at-limit={isAtLimit || (clip.endTime - clip.startTime) > clip.mediaDuration || undefined}
+    >
+      <div
+        className="clip-handle left"
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          handlePointerDown(e, 'trim-start');
+        }}
+        style={{
+          position: 'absolute',
+          left: -8,
+          width: 16,
+          height: '100%',
+          cursor: 'col-resize',
+          zIndex: 10,
+          background: 'rgba(255, 255, 255, 0.1)',
+          opacity: 0,
+          transition: 'opacity 0.15s ease'
+        }}
+      />
+      {renderClipContent()}
+      <div
+        className="clip-handle right"
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          handlePointerDown(e, 'trim-end');
+        }}
+        style={{
+          position: 'absolute',
+          right: -8,
+          width: 16,
+          height: '100%',
+          cursor: 'col-resize',
+          zIndex: 10,
+          background: 'rgba(255, 255, 255, 0.1)',
+          opacity: 0,
+          transition: 'opacity 0.15s ease'
+        }}
+      />
+      <div className="clip-duration">
+        {durationFormatted}
+        {(clip.endTime - clip.startTime) > clip.mediaDuration && (
+          <span style={{ 
+            fontSize: '0.8em', 
+            opacity: 0.7, 
+            marginLeft: '4px',
+            color: '#ff6b6b'
+          }}>
+            ({formatTime(clip.mediaDuration, { fps, showFrames: true })} source)
+          </span>
+        )}
+      </div>
+    </div>
+  );
+};
+
+
+##4. useTimeline.ts
+
+import { useCallback } from 'react';
+import { useTimelineContext } from './useTimelineContext';
+import { Track, VideoClip, AudioClip, CaptionClip, ActionTypes, isVideoClip, isAudioClip, isCaptionClip, createClip } from '../types/timeline';
+import { logger } from '../utils/logger';
+
+export const useTimeline = () => {
+  const { state, dispatch } = useTimelineContext();
+
+  const addTrack = useCallback((track: Track) => {
+    dispatch({
+      type: ActionTypes.ADD_TRACK,
+      payload: { track }
+    });
+  }, [dispatch]);
+
+  const updateTrack = useCallback((trackId: string, updates: Partial<Track>) => {
+    logger.debug('[useTimeline] updateTrack =>', { trackId, updates });
+    dispatch({
+      type: ActionTypes.UPDATE_TRACK,
+      payload: { trackId, track: updates }
+    });
+  }, [dispatch]);
+
+  const removeTrack = useCallback((trackId: string) => {
+    dispatch({
+      type: ActionTypes.REMOVE_TRACK,
+      payload: { trackId }
+    });
+  }, [dispatch]);
+
+  const moveTrack = useCallback((trackId: string, newIndex: number) => {
+    dispatch({
+      type: ActionTypes.MOVE_TRACK,
+      payload: { trackId, newIndex }
+    });
+  }, [dispatch]);
+
+  const createClipFromMedia = useCallback((
+    trackId: string, 
+    mediaItem: { 
+      id: string;
+      name: string;
+      type: 'video' | 'audio' | 'image';
+      path: string;
+      duration?: number;
+      originalDuration?: number;
+      initialDuration?: number;
+      maxDuration?: number;
+    },
+    startTime: number
+  ) => {
+    const duration = mediaItem.duration || 5;
+    const originalDuration = mediaItem.originalDuration || duration;
+    const initialDuration = mediaItem.initialDuration || duration;
+    const maxDuration = mediaItem.maxDuration || duration;
+    const endTime = startTime + (mediaItem.type === 'image' ? 5 : duration);
+    const clip = mediaItem.type === 'audio' 
+      ? createClip('audio', {
+          id: `clip-${Date.now()}`,
+          name: mediaItem.name,
+          startTime,
+          endTime,
+          src: mediaItem.path,
+          mediaOffset: 0,
+          mediaDuration: duration,
+          originalDuration: originalDuration,
+          initialDuration: initialDuration,
+          maxDuration: maxDuration,
+          initialBounds: {
+            startTime,
+            endTime,
+            mediaOffset: 0,
+            mediaDuration: duration
+          }
+        })
+      : createClip('video', {
+          id: `clip-${Date.now()}`,
+          name: mediaItem.name,
+          startTime,
+          endTime,
+          src: mediaItem.path,
+          mediaOffset: 0,
+          mediaDuration: mediaItem.type === 'image' ? 5 : duration,
+          originalDuration: mediaItem.type === 'image' ? 5 : originalDuration,
+          initialDuration: mediaItem.type === 'image' ? 5 : initialDuration,
+          maxDuration: mediaItem.type === 'image' ? 5 : maxDuration,
+          initialBounds: {
+            startTime,
+            endTime,
+            mediaOffset: 0,
+            mediaDuration: mediaItem.type === 'image' ? 5 : duration
+          }
+        });
+
+    dispatch({
+      type: ActionTypes.ADD_CLIP,
+      payload: { trackId, clip }
+    });
+    return clip;
+  }, [dispatch]);
+
+  const updateClip = useCallback((trackId: string, clipId: string, updates: Partial<VideoClip | AudioClip | CaptionClip>) => {
+    dispatch({
+      type: ActionTypes.UPDATE_CLIP,
+      payload: { trackId, clipId, clip: updates }
+    });
+  }, [dispatch]);
+
+  const removeClip = useCallback((trackId: string, clipId: string) => {
+    dispatch({
+      type: ActionTypes.REMOVE_CLIP,
+      payload: { trackId, clipId }
+    });
+  }, [dispatch]);
+
+  const moveClip = useCallback((clipId: string, sourceTrackId: string, targetTrackId: string, newTime: number) => {
+    dispatch({
+      type: ActionTypes.MOVE_CLIP,
+      payload: {
+        clipId,
+        sourceTrackId,
+        targetTrackId,
+        newTime
+      }
+    });
+  }, [dispatch]);
+
+  const splitClip = useCallback((trackId: string, clipId: string, time: number) => {
+    dispatch({
+      type: ActionTypes.SPLIT_CLIP,
+      payload: { trackId, clipId, time }
+    });
+  }, [dispatch]);
+
+  const trimClip = useCallback((clipId: string, startTime?: number, endTime?: number, ratio?: number, updates?: Partial<VideoClip | AudioClip | CaptionClip>) => {
+    dispatch({
+      type: ActionTypes.TRIM_CLIP,
+      payload: { clipId, startTime, endTime, ratio, ...updates }
+    });
+  }, [dispatch]);
+
+  return {
+    tracks: state.tracks,
+    currentTime: state.currentTime,
+    duration: state.duration,
+    zoom: state.zoom,
+    fps: state.fps,
+    isPlaying: state.isPlaying,
+    isDragging: state.isDragging,
+    selectedTrackId: state.selectedTrackId,
+    selectedClipIds: state.selectedClipIds,
+    addTrack,
+    updateTrack,
+    removeTrack,
+    moveTrack,
+    createClipFromMedia,
+    updateClip,
+    removeClip,
+    moveClip,
+    splitClip,
+    trimClip
+  };
+};

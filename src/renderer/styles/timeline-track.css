@@ -1,0 +1,145 @@
+/* Timeline Track Styles */
+
+.timeline-track {
+  position: relative;
+  width: 100%;
+  height: var(--timeline-track-height);
+  background-color: var(--timeline-track-bg);
+  border-bottom: var(--timeline-border-width) solid var(--timeline-border-color);
+  display: flex;
+  z-index: var(--timeline-z-tracks);
+  transition: background-color var(--timeline-transition-fast);
+}
+
+/* Alternate track background */
+.timeline-track:nth-child(even) {
+  background-color: var(--timeline-track-alt-bg);
+}
+
+/* Selected track state */
+.timeline-track.selected {
+  background-color: var(--timeline-track-selected-bg);
+}
+
+/* Track Header */
+.timeline-track-header {
+  position: sticky;
+  left: 0;
+  width: var(--timeline-header-height);
+  height: 100%;
+  background-color: inherit;
+  border-right: var(--timeline-border-width) solid var(--timeline-border-color);
+  display: flex;
+  align-items: center;
+  padding: var(--timeline-spacing-sm);
+  z-index: var(--timeline-z-header);
+}
+
+.timeline-track-name {
+  font-size: var(--timeline-font-size-sm);
+  font-weight: var(--timeline-font-weight-normal);
+  color: var(--timeline-ruler-text-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Track Content */
+.timeline-track-content {
+  position: relative;
+  flex: 1;
+  height: 100%;
+  overflow: visible;
+}
+
+/* Track Drop Target Indicator */
+.timeline-track-drop-target {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: var(--timeline-track-height);
+  border: 2px dashed var(--timeline-handle-color);
+  background-color: var(--timeline-selection-bg);
+  pointer-events: none;
+  z-index: var(--timeline-z-overlay);
+}
+
+/* Track Controls */
+.timeline-track-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--timeline-spacing-sm);
+  opacity: 0;
+  transition: opacity var(--timeline-transition-fast);
+}
+
+.timeline-track:hover .timeline-track-controls,
+.timeline-track.selected .timeline-track-controls {
+  opacity: 1;
+}
+
+.timeline-track-control-button {
+  padding: var(--timeline-spacing-xs);
+  background: none;
+  border: none;
+  color: var(--timeline-ruler-text-color);
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity var(--timeline-transition-fast);
+}
+
+.timeline-track-control-button:hover {
+  opacity: 1;
+}
+
+/* Touch Device Styles */
+@media (pointer: coarse) {
+  .timeline-track-header {
+    width: calc(var(--timeline-header-height) * 1.5);
+    padding: var(--timeline-spacing-md);
+  }
+
+  .timeline-track-name {
+    font-size: var(--timeline-font-size-md);
+  }
+
+  .timeline-track-controls {
+    opacity: 1;
+    gap: var(--timeline-spacing-md);
+  }
+
+  .timeline-track-control-button {
+    padding: var(--timeline-spacing-sm);
+  }
+}
+
+/* High Contrast Mode */
+@media (forced-colors: active) {
+  .timeline-track {
+    border-color: CanvasText;
+  }
+
+  .timeline-track.selected {
+    background-color: Highlight;
+  }
+
+  .timeline-track-header {
+    border-color: CanvasText;
+  }
+
+  .timeline-track-name {
+    color: CanvasText;
+  }
+
+  .timeline-track-drop-target {
+    border-color: Highlight;
+  }
+
+  .timeline-track-control-button {
+    color: ButtonText;
+  }
+
+  .timeline-track-control-button:hover {
+    color: Highlight;
+  }
+}

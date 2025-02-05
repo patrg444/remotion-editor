@@ -1,0 +1,9 @@
+Release/obj.target/video_engine/src/gpu_manager.o: ../src/gpu_manager.cpp \
+  ../src/../include/gpu_manager.h \
+  /Users/patrickgloria/remotion-editor/remotion-editor/src/main/video/engine/native/node_modules/node-addon-api/napi.h \
+  /Users/patrickgloria/Library/Caches/node-gyp/23.6.0/include/node/node_api.h \
+  /Users/patrickgloria/Library/Caches/node-gyp/23.6.0/include/node/js_native_api.h \
+  /Users/patrickgloria/Library/Caches/node-gyp/23.6.0/include/node/js_native_api_types.h \
+  /Users/patrickgloria/Library/Caches/node-gyp/23.6.0/include/node/node_api_types.h \
+  /Users/patrickgloria/remotion-editor/remotion-editor/src/main/video/engine/native/node_modules/node-addon-api/napi-inl.h \
+  /Users/patrickgloria/remotion-editor/remotion-editor/src/main/video/engine/native/node_modules/node-addon-api/napi-inl.deprecated.h
