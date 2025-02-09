@@ -1,416 +1,171 @@
-/* Timeline Container */
-.timeline-container {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  background: #1a1a1a;
-  color: #fff;
-  overflow: hidden;
-  user-select: none;
-}
-
 .timeline-wrapper {
   position: relative;
+  overflow: visible;
+}
+
+.timeline-body {
+  position: relative;
+  overflow: visible;
   width: 100%;
   height: 100%;
+}
+
+.timeline-content {
+  position: relative;
+  overflow: visible;
+  width: 100%;
+  height: 100%;
+  transform-origin: 0 0;
+  min-height: 200px;
   display: flex;
   flex-direction: column;
-  min-height: 60px;
-  overflow: auto;
+}
+
+.timeline-content > * {
+  flex-shrink: 0;
 }
 
 .timeline-tracks-container {
   position: relative;
+  overflow: visible;
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
   display: flex;
-  flex: 1;
-  min-height: 60px;
+  flex-direction: row;
 }
 
 .timeline-tracks-controls {
-  flex: 0 0 100px;
-  background: #252525;
-  border-right: 2px solid #444;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
+  position: relative;
+  overflow: visible;
+  flex: 0 0 auto;
+  z-index: 2;
 }
 
 .timeline-tracks-content {
-  flex: 1;
   position: relative;
-  overflow: auto;
-  touch-action: none;
-}
-
-/* Timeline Content */
-.timeline-content {
-  position: relative;
-  height: 100%;
-  min-height: 60px;
-  touch-action: none;
-}
-
-/* Ruler Area */
-.timeline-ruler {
-  flex: 0 0 24px;
-  position: sticky;
-  top: 0;
-  display: flex;
-  background: linear-gradient(to bottom, #303030, #2a2a2a);
-  border-bottom: 1px solid #444;
-  z-index: 100;
-}
-
-.timeline-ruler-area {
-  flex: 0 0 100px;
-  background: #252525;
-  border-right: 2px solid #444;
-}
-
-.timeline-ruler-content {
-  flex: 1;
-  position: relative;
-  overflow: hidden;
-}
-
-/* Tracks Area */
-.timeline-body {
-  flex: 1;
-  min-height: 30px;
-  position: relative;
-  display: flex;
-  overflow: auto;
-  touch-action: none;
-}
-
-/* Track */
-.timeline-track {
-  position: relative;
-  height: 60px;
-  min-height: 60px;
-  background: linear-gradient(to bottom, #2d2d2d, #252525);
-  border-bottom: 1px solid #444;
-  touch-action: none;
-}
-
-.timeline-track.selected {
-  background: linear-gradient(to bottom, #2d2d2d, #252525);
-  border-left: 2px solid #007bff;
-}
-
-.timeline-track.empty {
+  overflow: visible;
+  flex: 1 1 auto;
+  min-height: 200px;
   background: repeating-linear-gradient(
     45deg,
-    transparent,
+    rgba(255, 255, 255, 0.02) 0px,
+    rgba(255, 255, 255, 0.02) 10px,
     transparent 10px,
-    rgba(68, 68, 68, 0.1) 10px,
-    rgba(68, 68, 68, 0.1) 20px
+    transparent 20px
   );
+  transform-origin: 0 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  height: 100%;
 }
 
-/* Track Controls */
-.track-controls {
-  position: relative;
-  height: 60px;
+.timeline-tracks-content > * {
+  flex-shrink: 0;
+  transform-origin: 0 0;
+}
+
+
+.timeline-track {
   min-height: 60px;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  background: linear-gradient(to right, #2a2a2a, #252525);
-  border-bottom: 1px solid #444;
-}
-
-.track-controls.selected {
-  background: linear-gradient(to right, #2d2d2d, #252525);
-  border-left: 2px solid #007bff;
-}
-
-/* Track Content */
-.track-content {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 60px;
   overflow: visible;
-  user-select: none;
-  touch-action: none;
-  transform: translate3d(0, 0, 0);
-  will-change: transform;
-  transition: background-color 0.2s ease;
-  pointer-events: auto;
-  isolation: isolate; /* Create new stacking context */
-  z-index: 1; /* Ensure track content is above other elements */
+  position: relative;
 }
 
-/* Ensure clips within track content stack properly */
-.track-content > * {
+.track-content {
+  min-height: 60px;
+  overflow: visible;
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.timeline-tracks-empty {
   position: absolute;
-  z-index: 1; /* Base z-index for clips */
-}
-
-.track-content > *:hover {
-  z-index: 2; /* Raise z-index on hover */
-}
-
-.track-content > *.selected {
-  z-index: 3; /* Highest z-index for selected clips */
-}
-
-.track-content.drag-over {
-  background-color: rgba(0, 123, 255, 0.1);
-  outline: 2px dashed var(--primary-color);
-  outline-offset: -2px;
-}
-
-/* Playhead */
-.timeline-playhead {
-  position: absolute;
-  width: 2px;
-  background: #ff4444;
-  pointer-events: none;
-  z-index: 1000;
-  transform: translate3d(0, 0, 0);
-  will-change: transform;
-  left: 0;
-}
-
-.timeline-playhead.ruler {
-  top: 0;
-  height: 24px;
-  left: 0;
-}
-
-.timeline-playhead.tracks {
-  top: 24px;
-  bottom: 0;
-  left: 0;
-}
-
-.timeline-playhead-head {
-  position: absolute;
-  top: -5px;
-  left: -4px;
-  width: 0;
-  height: 0;
-  border-left: 4px solid transparent;
-  border-right: 4px solid transparent;
-  border-top: 5px solid #ff4444;
-}
-
-/* Track Controls Elements */
-.track-buttons-left {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 4px;
-}
-
-.track-name {
-  font-size: 12px;
-  font-weight: 600;
-  color: #fff;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-  padding: 3px 4px;
-  border-radius: 2px;
-  background: rgba(0, 0, 0, 0.2);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  height: 18px;
-  line-height: 18px;
-  letter-spacing: 0.2px;
-}
-
-.track-name-input {
-  font-size: 12px;
-  background: #1a1a1a;
-  border: 1px solid #444;
-  border-radius: 2px;
-  color: #fff;
-  padding: 2px 3px;
-  width: calc(100% - 4px);
-  height: 18px;
-  letter-spacing: 0.2px;
-}
-
-.track-buttons-right {
-  display: flex;
-  gap: 0;
-  margin-left: 2px;
-}
-
-.track-visibility-toggle,
-.track-mute-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  border: none;
-  border-radius: 2px;
-  background: transparent;
-  color: #888;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  color: rgba(255, 255, 255, 0.5);
   cursor: pointer;
-  transition: all 0.2s ease;
-  margin-left: 1px;
-  padding: 0;
-  font-size: 11px;
-  line-height: 1;
+  padding: 20px;
+  border-radius: 8px;
+  transition: background-color 0.2s;
 }
 
-.track-visibility-toggle:hover,
-.track-mute-toggle:hover {
+.timeline-tracks-empty:hover {
   background: rgba(255, 255, 255, 0.05);
-  color: #fff;
 }
 
-.track-visibility-toggle:active,
-.track-mute-toggle:active {
-  transform: scale(0.95);
+.timeline-tracks-empty-icon {
+  font-size: 24px;
+  margin-bottom: 8px;
 }
 
-.track-move-up,
-.track-move-down {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 10px;
-  height: 10px;
-  border: none;
-  border-radius: 0;
-  background: transparent;
-  color: #888;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 9px;
-  padding: 0;
+.timeline-tracks-empty span {
+  font-size: 14px;
 }
 
-.track-move-up:hover,
-.track-move-down:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
-}
-
-.track-move-up:active,
-.track-move-down:active {
-  background: rgba(255, 255, 255, 0.15);
-  transform: translateY(1px);
-}
-
-.track-delete-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  border: none;
-  border-radius: 2px;
-  background: transparent;
-  color: #ff4444;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 11px;
-  padding: 0;
-}
-
-.track-delete-button:hover {
-  background: rgba(255, 68, 68, 0.15);
-  color: #ff6666;
-}
-
-.track-delete-button:active {
-  background: rgba(255, 68, 68, 0.25);
-  transform: translateY(1px);
-}
-
-.track-controls-group {
-  display: flex;
-  align-items: center;
-  gap: 1px;
-}
-
-.track-arrows {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
-/* Ruler Elements */
-.ruler-tick {
+.timeline-transition {
   position: absolute;
-  width: 1px;
-  background: #555;
-  bottom: 0;
-  transition: background 0.2s ease;
-}
-
-.ruler-tick.major {
-  height: 12px;
-  background: #777;
-  width: 1px;
-}
-
-.ruler-tick.minor {
-  height: 8px;
-}
-
-.ruler-label {
-  position: absolute;
-  font-size: 9px;
-  color: #aaa;
-  bottom: 14px;
-  transform: translateX(-50%);
-  font-weight: 500;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-}
-
-.ruler-tick:hover {
-  background: #666;
-}
-
-.ruler-tick.major:hover {
-  background: #888;
-}
-
-/* Timeline Tools */
-.timeline-tools {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 16px;
-}
-
-.tool-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: 1px solid #444;
+  height: 20px;
+  top: 0;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 4px;
-  background: #2a2a2a;
-  color: #888;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: all;
+  z-index: 2;
+  transform: translateY(50%);
 }
 
-.tool-button:hover {
-  background: #333;
-  color: #fff;
-  border-color: #555;
+.timeline-transition-handle {
+  position: absolute;
+  width: 8px;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.3);
+  cursor: ew-resize;
+  z-index: 3;
 }
 
-.tool-button.active {
-  background: #007bff;
-  color: #fff;
-  border-color: #0056b3;
+.timeline-transition-handle.left {
+  left: 0;
+  border-top-left-radius: 4px;
+  border-bottom-left-radius: 4px;
 }
 
-.tool-button.active:hover {
-  background: #0056b3;
+.timeline-transition-handle.right {
+  right: 0;
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
 }
 
-/* Import clips.css for clip styles */
-@import './clips.css';
+.timeline-transition-icon {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.8);
+  pointer-events: none;
+}
+
+.timeline-transition-preview {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.timeline-transition canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.1);
+}

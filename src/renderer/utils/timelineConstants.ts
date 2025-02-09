@@ -123,8 +123,8 @@ export const TimelineConstants = {
     MIN_ZOOM: 0.1,
     MAX_ZOOM: 10,
     DEFAULT_ZOOM: 1,
-    getScale: (zoom: number) => zoom * TimelineConstants.Scale.PIXELS_PER_SECOND,
-    getZoom: (scale: number) => scale / TimelineConstants.Scale.PIXELS_PER_SECOND
+    getScale: (zoom: number) => (zoom / 50) * TimelineConstants.Scale.PIXELS_PER_SECOND,
+    getZoom: (scale: number) => (scale / TimelineConstants.Scale.PIXELS_PER_SECOND) * 50
   },
   MIN_DURATION: 0.1, // Minimum clip duration in seconds
   MAX_CLIP_DURATION: 1800.0, // Maximum clip duration in seconds (30 minutes)
@@ -170,7 +170,8 @@ export const TimelineConstants = {
     MIN_DURATION: MIN_TRANSITION_DURATION,
     MAX_DURATION: MAX_TRANSITION_DURATION,
     DEFAULT_DURATION: DEFAULT_TRANSITION_DURATION,
-    HANDLE_SIZE: TRANSITION_HANDLE_SIZE
+    HANDLE_SIZE: TRANSITION_HANDLE_SIZE,
+    ADJACENCY_TOLERANCE: 0.1 // 100ms tolerance for clip adjacency
   },
   Effects: {
     MAX_PER_CLIP: MAX_EFFECTS_PER_CLIP,

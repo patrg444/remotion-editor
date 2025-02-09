@@ -1,10 +1,34 @@
-/// <reference types="electron" />
-/// <reference path="./electron-window.d.ts" />
-
 declare global {
-  interface Window extends ElectronWindow {}
-  const __TEST__: boolean;
-  const __DEBUG__: boolean;
+  interface Window {
+    timelineState: {
+      mediaBin: {
+        items: any[];
+        selectedIds: string[];
+      };
+      tracks: Array<{
+        id: string;
+        name: string;
+        type: string;
+        clips: any[];
+        transitions: any[];
+        allowTransitions: boolean;
+        transitionsEnabled: boolean;
+        showTransitions: boolean;
+      }>;
+      currentTime: number;
+      duration: number;
+      zoom: number;
+      fps: number;
+      isPlaying: boolean;
+      isDragging: boolean;
+    };
+    timelineDispatch: (action: { type: string; payload: any }) => void;
+    timelineReady: boolean;
+    logger: {
+      debug: (...args: any[]) => void;
+      error: (...args: any[]) => void;
+    };
+  }
 }
 
 export {};

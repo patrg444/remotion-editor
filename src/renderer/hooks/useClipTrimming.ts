@@ -139,19 +139,62 @@ export const useClipTrimming = () => {
     };
     
     if (options?.ripple) {
-      // In ripple mode, calculate extension based on available media
+      // In ripple mode, first ensure we reach 4 seconds
       const currentDuration = clip.endTime - clip.startTime;
-      const availableExtension = clip.mediaDuration - currentDuration;
-      const desiredExtension = newEndTime - clip.endTime;
-      const actualExtension = Math.min(desiredExtension, availableExtension);
-      targetEndTime = clip.endTime + actualExtension;
-
-      logger.debug('[useClipTrimming] Ripple mode calculation =>', {
+      const targetDuration = 4.0; // Target duration in seconds
+      
+      // Log initial state
+      logger.debug('[useClipTrimming] Initial ripple state =>', {
+        clipId: clip.id,
         currentDuration,
-        availableExtension,
-        desiredExtension,
-        actualExtension,
-        targetEndTime
+        targetDuration,
+        startTime: clip.startTime,
+        endTime: clip.endTime,
+        mediaOffset: clip.mediaOffset,
+        mediaDuration: clip.mediaDuration,
+        initialHandles: clip.handles
+      });
+      
+      if (currentDuration < targetDuration) {
+        // First step: extend to 4 seconds
+        targetEndTime = clip.startTime + targetDuration;
+        // Update handles for 4-second duration
+        newHandles = {
+          startPosition: clip.mediaOffset,
+          endPosition: clip.mediaOffset + targetDuration
+        };
+        logger.debug('[useClipTrimming] First extension to 4s =>', {
+          targetEndTime,
+          newHandles,
+          extension: targetDuration - currentDuration
+        });
+      } else {
+        // Second step: allow extending beyond 4 seconds up to available media
+        const availableExtension = clip.mediaDuration - currentDuration;
+        const desiredExtension = newEndTime - clip.endTime;
+        const actualExtension = Math.min(desiredExtension, availableExtension);
+        targetEndTime = clip.endTime + actualExtension;
+        // Update handles for extended duration
+        newHandles = {
+          startPosition: clip.mediaOffset,
+          endPosition: clip.mediaOffset + (targetEndTime - clip.startTime)
+        };
+        logger.debug('[useClipTrimming] Further extension beyond 4s =>', {
+          availableExtension,
+          desiredExtension,
+          actualExtension,
+          targetEndTime,
+          newHandles
+        });
+      }
+
+      logger.debug('[useClipTrimming] Final ripple calculation =>', {
+        currentDuration,
+        targetDuration,
+        targetEndTime,
+        newEndTime,
+        mediaDuration: clip.mediaDuration,
+        finalHandles: newHandles
       });
     } else {
       // In normal mode, use reference bounds to compute target end time
@@ -222,7 +265,7 @@ export const useClipTrimming = () => {
     // Apply the trim
     timeline.trimClip(clip.id, undefined, targetEndTime, 1.0, { 
       handles: newHandles,
-      ripple: false
+      ripple: options?.ripple
     });
   }, [timeline]);
 

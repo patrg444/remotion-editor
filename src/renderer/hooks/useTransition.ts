@@ -55,8 +55,8 @@ export function useTransition(initialTransition: TransitionInstance) {
           isRendering: false
         };
         logger.info('Render completed', {
-          previewDataSize: action.previewData?.clipA.data.length,
-          finalParams: action.previewData?.params
+          previewDataSize: action.previewData.clipA.data?.length,
+          finalParams: action.previewData.params
         });
         break;
 
@@ -151,8 +151,8 @@ export function useTransition(initialTransition: TransitionInstance) {
   const renderTransition = useCallback(async (options: TransitionRenderOptions = {
     width: 1920,
     height: 1080,
-    quality: 'medium',
-    useGPU: true,
+    quality: 'preview' as const,
+    gpuPreviewEnabled: true,
   }) => {
     if (!state.transition.definition) return;
 
@@ -202,6 +202,18 @@ export function useTransition(initialTransition: TransitionInstance) {
       gl.compileShader(vertexShader);
       gl.compileShader(fragmentShader);
 
+      // Check shader compilation status
+      if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+        const error = gl.getShaderInfoLog(vertexShader);
+        logger.error('Vertex shader compilation failed:', error);
+        throw new Error(`Vertex shader compilation failed: ${error}`);
+      }
+      if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
+        const error = gl.getShaderInfoLog(fragmentShader);
+        logger.error('Fragment shader compilation failed:', error);
+        throw new Error(`Fragment shader compilation failed: ${error}`);
+      }
+
       logger.debug('Creating shader program');
       // Create shader program
       const program = gl.createProgram();
@@ -213,7 +225,48 @@ export function useTransition(initialTransition: TransitionInstance) {
       gl.attachShader(program, vertexShader);
       gl.attachShader(program, fragmentShader);
       gl.linkProgram(program);
+
+      // Check program linking status
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        const error = gl.getProgramInfoLog(program);
+        logger.error('Program linking failed:', error);
+        throw new Error(`Program linking failed: ${error}`);
+      }
+
       gl.useProgram(program);
+
+      // Create framebuffer
+      const framebuffer = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+
+      // Create and attach texture to framebuffer
+      const renderTexture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, renderTexture);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, renderTexture, 0);
+
+      // Set viewport
+      gl.viewport(0, 0, width, height);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+
+      // Create and bind vertex buffer
+      const vertexBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+      const vertices = new Float32Array([
+        0, 0,  // Bottom-left
+        1, 0,  // Bottom-right
+        0, 1,  // Top-left
+        1, 1   // Top-right
+      ]);
+      gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+      // Set up vertex attributes
+      const positionLocation = gl.getAttribLocation(program, 'position');
+      gl.enableVertexAttribArray(positionLocation);
+      gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
 
       logger.debug('Setting up uniforms with params:', state.transition.params);
       // Set up uniforms using params instead of definition values
@@ -242,7 +295,17 @@ export function useTransition(initialTransition: TransitionInstance) {
               gl.uniformMatrix4fv(location, false, value as Float32Array);
               break;
             case 'sampler2D':
-              // Handle texture uniforms
+              if (name === 'fromTexture' || name === 'toTexture') {
+                gl.activeTexture(name === 'fromTexture' ? gl.TEXTURE0 : gl.TEXTURE1);
+                gl.bindTexture(gl.TEXTURE_2D, value as WebGLTexture);
+                gl.uniform1i(location, name === 'fromTexture' ? 0 : 1);
+                
+                // Set texture parameters
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+              }
               break;
           }
         }
@@ -255,14 +318,38 @@ export function useTransition(initialTransition: TransitionInstance) {
         type: 'UNSIGNED_BYTE',
         expectedSize: width * height * 4
       });
-      // Render to texture
+      // Draw the quad
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+      // Read pixels from framebuffer
       const pixels = new Uint8ClampedArray(width * height * 4);
       gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+
+      // Clean up
+      gl.deleteShader(vertexShader);
+      gl.deleteShader(fragmentShader);
+      gl.deleteProgram(program);
+      gl.deleteBuffer(vertexBuffer);
+      gl.deleteFramebuffer(framebuffer);
+      gl.deleteTexture(renderTexture);
       logger.debug('Creating ImageData', {
         pixelsLength: pixels.length,
         nonZeroPixels: pixels.filter(x => x !== 0).length
       });
       const imageData = new ImageData(pixels, width, height, { colorSpace: 'srgb' });
+
+      // Create textures for clipA and clipB
+      const textureA = gl.createTexture();
+      const textureB = gl.createTexture();
+      if (!textureA || !textureB) {
+        throw new Error('Failed to create textures');
+      }
+
+      // Initialize textures with image data
+      gl.bindTexture(gl.TEXTURE_2D, textureA);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, imageData.data);
+      gl.bindTexture(gl.TEXTURE_2D, textureB);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, imageData.data);
 
       logger.info('Render completed successfully');
       // Complete render
@@ -274,12 +361,14 @@ export function useTransition(initialTransition: TransitionInstance) {
             width,
             height,
             colorSpace: 'srgb',
+            texture: textureA
           },
           clipB: {
             data: imageData.data,
             width,
             height,
             colorSpace: 'srgb',
+            texture: textureB
           },
           progress: state.transition.progress,
           params: state.transition.params,

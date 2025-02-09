@@ -33,7 +33,7 @@ export const TestApp: React.FC<TestAppProps> = ({ children, initialTracks = [] }
     scrollX: 0,
     scrollY: 0,
     aspectRatio: '16:9',
-    selectedClipIds: initialTracks[0]?.clips[0]?.id ? [initialTracks[0].clips[0].id] : [], // Select first clip by default
+    selectedClipIds: initialTracks[0]?.clips[0]?.id ? [initialTracks[0].clips[0].id] : [],
     selectedCaptionIds: [],
     markers: [],
     fps: 30,
@@ -41,7 +41,11 @@ export const TestApp: React.FC<TestAppProps> = ({ children, initialTracks = [] }
       entries: [],
       currentIndex: -1
     },
-    isSnappingEnabled: true
+    error: undefined,
+    showEffects: true,
+    renderQuality: 'preview' as const,
+    isSnappingEnabled: true,
+    rippleState: {}
   };
 
   return (

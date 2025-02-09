@@ -26,7 +26,9 @@ export const Timeline: React.FC<TimelineProps> = memo(({
   const { state, dispatch } = useTimelineContext();
   const { timeToPixels } = useTimelineViewport();
   const containerRef = useRef<HTMLDivElement>(null);
+  const timelineRef = useRef<HTMLDivElement>(null);
   const [contentWidth, setContentWidth] = useState(0);
+  const lastStateRef = useRef(state);
 
   // Update duration based on clips and media duration, but only when not dragging
   useEffect(() => {
@@ -56,6 +58,44 @@ export const Timeline: React.FC<TimelineProps> = memo(({
     }
   }, [state.tracks, dispatch, state.duration, state.isDragging]);
 
+  // Handle state updates and notify components
+  useEffect(() => {
+    const stateChanged = state !== lastStateRef.current;
+    lastStateRef.current = state;
+
+    if (stateChanged && containerRef.current) {
+      // Force reflow to ensure state changes are applied
+      void containerRef.current.offsetHeight;
+
+      // Notify that timeline state has changed
+      window.dispatchEvent(new CustomEvent('timeline:state-changed', {
+        detail: {
+          tracks: state.tracks.map(t => ({
+            id: t.id,
+            clipCount: t.clips.length,
+            clips: t.clips.map(c => ({
+              id: c.id,
+              startTime: c.startTime,
+              endTime: c.endTime,
+              layer: c.layer
+            }))
+          })),
+          selectedClipIds: state.selectedClipIds,
+          currentTime: state.currentTime,
+          zoom: state.zoom
+        }
+      }));
+
+      // Wait for next frame to ensure DOM is updated
+      requestAnimationFrame(() => {
+        // Force another reflow to ensure all updates are applied
+        if (containerRef.current) {
+          void containerRef.current.offsetHeight;
+        }
+      });
+    }
+  }, [state]);
+
   // Memoize callback handlers to prevent unnecessary re-renders
   const handleTimeChange = useCallback((time: number) => {
     logger.debug('Time change in Timeline:', {
@@ -68,7 +108,7 @@ export const Timeline: React.FC<TimelineProps> = memo(({
 
     dispatch({
       type: ActionTypes.SET_CURRENT_TIME,
-      payload: { time }
+      payload: time
     });
     onTimeUpdate(time);
   }, [dispatch, onTimeUpdate, state.zoom, state.duration, scrollLeft, containerWidth]);
@@ -108,39 +148,27 @@ export const Timeline: React.FC<TimelineProps> = memo(({
 
     // Only split if time is within clip bounds
     if (time > clip.startTime && time < clip.endTime) {
-      const firstClip = {
-        ...clip,
-        id: `${clip.id}-1`,
-        endTime: time
-      };
-
-      const secondClip = {
-        ...clip,
-        id: `${clip.id}-2`,
-        startTime: time,
-        mediaOffset: clip.mediaOffset + (time - clip.startTime)
-      };
-
-      // Remove original clip and add split clips
-      const updatedClips = track.clips
-        .filter(c => c.id !== clip.id)
-        .concat([firstClip, secondClip])
-        .sort((a, b) => a.startTime - b.startTime);
-
-      // Update tracks and maintain selection
       dispatch({
-        type: ActionTypes.SET_TRACKS,
-        payload: state.tracks.map(t => 
-          t.id === track.id 
-            ? { ...t, clips: updatedClips }
-            : t
-        )
+        type: ActionTypes.SPLIT_CLIP,
+        payload: {
+          trackId: track.id,
+          clipId,
+          time
+        }
       });
 
-      // Re-select the first clip after split
-      dispatch({
-        type: ActionTypes.SET_SELECTED_CLIP_IDS,
-        payload: [firstClip.id]
+      // Wait for next frame to ensure state is updated
+      requestAnimationFrame(() => {
+        // Notify that clip was split
+        window.dispatchEvent(new CustomEvent('timeline:clip-split', {
+          detail: {
+            trackId: track.id,
+            originalClipId: clipId,
+            splitTime: time,
+            firstClipId: `${clipId}-1`,
+            secondClipId: `${clipId}-2`
+          }
+        }));
       });
     }
   }, [state.tracks, dispatch]);
@@ -246,35 +274,69 @@ export const Timeline: React.FC<TimelineProps> = memo(({
     }
   }, [scrollLeft]);
 
-  // Handle keyboard shortcuts
+  // Focus timeline on mount
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Only handle shortcuts when a clip is selected
-      if (state.selectedClipIds.length === 1) {
-        switch (e.key) {
-          case 's':
-          case 'S':
-            e.preventDefault();
-            logger.debug('Split key pressed:', {
-              selectedClipIds: state.selectedClipIds,
-              currentTime: state.currentTime,
-              tracks: state.tracks
-            });
-            handleSplitClip(state.selectedClipIds[0], state.currentTime);
-            logger.debug('After split attempt:', {
-              tracks: state.tracks
-            });
-            break;
-        }
-      }
-    };
+    if (timelineRef.current) {
+      timelineRef.current.focus();
+    }
+  }, []);
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [state.selectedClipIds, state.currentTime, handleSplitClip]);
+  // Handle keyboard shortcuts
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    // Handle undo/redo shortcuts regardless of selection state
+    if (e.key === 'z' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      if (e.shiftKey) {
+        logger.debug('Redo shortcut pressed (Cmd/Ctrl + Shift + Z)');
+        dispatch({
+          type: ActionTypes.REDO
+        });
+      } else {
+        logger.debug('Undo shortcut pressed (Cmd/Ctrl + Z)');
+        dispatch({
+          type: ActionTypes.UNDO
+        });
+      }
+      return;
+    }
+
+    // Only handle other shortcuts when a clip is selected
+    if (state.selectedClipIds.length === 1) {
+      switch (e.key) {
+        case 's':
+        case 'S':
+          e.preventDefault();
+          logger.debug('Split key pressed:', {
+            selectedClipIds: state.selectedClipIds,
+            currentTime: state.currentTime,
+            tracks: state.tracks
+          });
+          handleSplitClip(state.selectedClipIds[0], state.currentTime);
+          logger.debug('After split attempt:', {
+            tracks: state.tracks
+          });
+          break;
+      }
+    }
+  }, [state.selectedClipIds, state.currentTime, handleSplitClip, dispatch]);
+
+  // Handle mouse events to maintain focus
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    // Prevent focus loss when clicking inside timeline
+    if (timelineRef.current && !timelineRef.current.contains(document.activeElement)) {
+      timelineRef.current.focus();
+    }
+  }, []);
 
   return (
-    <div className="timeline-wrapper" data-testid="timeline" tabIndex={-1}>
+    <div 
+      ref={timelineRef}
+      className="timeline-wrapper" 
+      data-testid="timeline" 
+      tabIndex={-1}
+      onKeyDown={handleKeyDown}
+      onMouseDown={handleMouseDown}
+    >
       <TimelineRuler
         currentTime={state.currentTime}
         duration={state.duration}
@@ -292,7 +354,13 @@ export const Timeline: React.FC<TimelineProps> = memo(({
           data-testid="timeline-content"
           style={{
             width: contentWidth,
-            minWidth: '100%'
+            minWidth: '100%',
+            position: 'relative',
+            overflow: 'visible',
+            height: '100%',
+            transform: 'none', // Remove transform from container
+            transformOrigin: '0 0',
+            willChange: 'transform'
           }}
           onScroll={handleScroll}
         >

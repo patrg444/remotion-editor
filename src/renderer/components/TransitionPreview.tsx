@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Transition, TransitionPreviewData } from '../types/transition';
 import { useTransition } from '../hooks/useTransition';
+import transitions from '../transitions/shaders';
 
 interface TransitionPreviewProps {
   transition: Transition;
@@ -24,6 +25,8 @@ export function TransitionPreview({
   onFrameRendered,
 }: TransitionPreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const startTime = currentTime || 0;
+  const duration = transition.duration || 1;
   const {
     previewData,
     isRendering,
@@ -32,11 +35,23 @@ export function TransitionPreview({
     generatePreview,
   } = useTransition({
     ...transition,
-    clipAId: transition.clipAId || '',
-    clipBId: transition.clipBId || '',
-    startTime: currentTime || 0,
+    startTime,
+    endTime: startTime + duration,
     progress: transition.progress || 0,
     isActive: true,
+    gpuPreviewEnabled: transition.gpuPreviewEnabled ?? true,
+    definition: transitions[transition.type],
+    id: transition.id || `transition-${Date.now()}`,
+    type: transition.type,
+    duration: duration,
+    clipAId: transition.clipAId || '',
+    clipBId: transition.clipBId || '',
+    params: {
+      ...transitions[transition.type].defaultParams,
+      ...transition.params,
+      clipAUrl: clipAUrl || '',
+      clipBUrl: clipBUrl || ''
+    }
   });
 
   useEffect(() => {

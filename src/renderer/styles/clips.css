@@ -17,7 +17,7 @@
   pointer-events: auto;
   will-change: transform;
   position: absolute; /* Ensure absolute positioning */
-  z-index: 1; /* Base z-index for all clips */
+  z-index: 10; /* Higher z-index to ensure visibility */
 }
 
 /* Ensure clips don't overlap by giving higher z-index to clips that come later */

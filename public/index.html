@@ -10,15 +10,13 @@
     html, body {
       margin: 0;
       padding: 0;
-      height: 100vh;
+      height: 100%;
       background: #1e1e1e;
       color: #ffffff;
       overflow: hidden;
     }
     #root {
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
+      height: 100%;
     }
     .app-loading {
       position: fixed;
@@ -41,8 +39,6 @@
       Loading editor...
     </div>
   </div>
-  <% if (!isTest) { %>
   <script src="test-import.js"></script>
-  <% } %>
 </body>
 </html>

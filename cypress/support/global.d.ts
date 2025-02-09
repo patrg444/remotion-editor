@@ -17,6 +17,7 @@ interface Window {
   timelineState: any;
   timelineDispatch: any;
   timelineReady: boolean;
+  __DISABLE_TEST_IMPORT__?: boolean;
 }
 
 interface File {

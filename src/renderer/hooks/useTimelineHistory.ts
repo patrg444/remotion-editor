@@ -1,9 +1,18 @@
 import { useCallback, useRef } from 'react';
 import { useTimelineContext } from './useTimelineContext';
-import { createStateDiff, applyStateDiff, StateDiff } from '../utils/historyDiff';
-import { TimelineState, ActionTypes } from '../types/timeline';
+import { produceWithPatches, Patch, enablePatches, applyPatches } from 'immer';
+import { TimelineState, ActionTypes, Track, ClipWithLayer } from '../types/timeline';
 import { TimelineConstants } from '../utils/timelineConstants';
 import { logger } from '../utils/logger';
+import { StateDiff } from '../types/history';
+
+// Enable patches for Immer
+enablePatches();
+
+// Helper function to safely apply patches
+const applyPatchesToState = <T extends object>(state: T, patches: Patch[]): T => {
+  return applyPatches(state, patches) as T;
+};
 
 // Checkpoint actions that store full state snapshots
 const CHECKPOINT_ACTIONS = new Set<ActionTypes>([
@@ -28,15 +37,26 @@ export const useTimelineHistory = () => {
       return;
     }
 
-    const isCheckpoint = actionType && CHECKPOINT_ACTIONS.has(actionType);
-    const diff = createStateDiff(previousState.current, state, description, isCheckpoint);
-    previousState.current = state;
+    const [nextState, patches, inversePatches] = produceWithPatches(previousState.current, (draft: TimelineState) => {
+      Object.assign(draft, state);
+    });
+
+    const diff: StateDiff = {
+      type: actionType && CHECKPOINT_ACTIONS.has(actionType) ? 'full' : 'partial',
+      timestamp: Date.now(),
+      patches,
+      inversePatches,
+      description,
+      snapshot: actionType && CHECKPOINT_ACTIONS.has(actionType) ? state : undefined
+    };
+
+    previousState.current = nextState;
     lastAction.current = actionType || null;
 
     logger.debug('Pushing history entry:', {
       description,
       actionType,
-      isCheckpoint,
+      type: diff.type,
       historySize: state.history.entries.length
     });
 
@@ -53,81 +73,170 @@ export const useTimelineHistory = () => {
     const { history } = state;
     if (history.currentIndex < 0) return;
 
-    let targetIndex = history.currentIndex - 1;
     const currentDiff = history.entries[history.currentIndex];
+    const targetIndex = history.currentIndex - 1;
 
-    // If current entry is not a checkpoint, keep going until we hit one
-    if (currentDiff.type !== 'full') {
-      while (targetIndex > 0 && history.entries[targetIndex].type !== 'full') {
-        targetIndex--;
-      }
-    }
-
-    logger.debug('Undoing to index:', {
-      from: history.currentIndex,
-      to: targetIndex,
-      isCheckpoint: history.entries[targetIndex]?.type === 'full'
+    logger.debug('[History] Starting undo operation:', {
+      currentIndex: history.currentIndex,
+      targetIndex,
+      currentDiffType: currentDiff.type,
+      currentDiffDescription: currentDiff.description
     });
 
-    // Apply all diffs in reverse
+    // Apply inverse patches
     let newState = state;
-    for (let i = history.currentIndex; i > targetIndex; i--) {
-      newState = applyStateDiff(newState, history.entries[i], true);
-    }
+    const entry = history.entries[history.currentIndex];
+    
+    logger.debug('[History] Applying inverse patches:', {
+      description: entry.description,
+      patchCount: entry.inversePatches.length
+    });
 
+    newState = applyPatchesToState(newState, entry.inversePatches);
+
+    // Log state transition
+    logger.debug('[History] State transition:', {
+      fromTracks: state.tracks.map((t: Track) => ({
+        id: t.id,
+        clips: t.clips.map((c: ClipWithLayer) => ({
+          id: c.id,
+          startTime: c.startTime,
+          endTime: c.endTime,
+          layer: c.layer,
+          mediaOffset: c.mediaOffset,
+          mediaDuration: c.mediaDuration
+        }))
+      })),
+      toTracks: newState.tracks.map((t: Track) => ({
+        id: t.id,
+        clips: t.clips.map((c: ClipWithLayer) => ({
+          id: c.id,
+          startTime: c.startTime,
+          endTime: c.endTime,
+          layer: c.layer,
+          mediaOffset: c.mediaOffset,
+          mediaDuration: c.mediaDuration
+        }))
+      }))
+    });
+
+    // Update state and history index
     dispatch({
       type: ActionTypes.SET_STATE,
-      payload: newState
+      payload: {
+        ...newState,
+        history: {
+          ...history,
+          currentIndex: targetIndex
+        }
+      }
     });
 
-    dispatch({
-      type: ActionTypes.SET_HISTORY_INDEX,
-      payload: targetIndex
-    });
-
+    // Update previous state
     previousState.current = newState;
+
+    // Wait for next frame to ensure state is updated
+    requestAnimationFrame(() => {
+      // Notify of undo completion
+      window.dispatchEvent(new CustomEvent('history:undo-complete', {
+        detail: {
+          fromIndex: history.currentIndex,
+          toIndex: targetIndex,
+          description: currentDiff.description
+        }
+      }));
+
+      // Force state update to ensure all components re-render
+      dispatch({
+        type: ActionTypes.SET_CURRENT_TIME,
+        payload: state.currentTime
+      });
+    });
   }, [state, dispatch]);
 
   const redo = useCallback(() => {
     const { history } = state;
     if (history.currentIndex >= history.entries.length - 1) return;
 
-    let targetIndex = history.currentIndex + 1;
+    const targetIndex = history.currentIndex + 1;
     const nextDiff = history.entries[targetIndex];
 
-    // If next entry is not a checkpoint, keep going until we hit one
-    if (nextDiff.type !== 'full') {
-      while (
-        targetIndex < history.entries.length - 1 &&
-        history.entries[targetIndex + 1].type !== 'full'
-      ) {
-        targetIndex++;
-      }
-    }
-
-    logger.debug('Redoing to index:', {
-      from: history.currentIndex,
-      to: targetIndex,
-      isCheckpoint: history.entries[targetIndex]?.type === 'full'
+    logger.debug('[History] Starting redo operation:', {
+      currentIndex: history.currentIndex,
+      targetIndex,
+      nextDiffType: nextDiff.type,
+      nextDiffDescription: nextDiff.description
     });
 
-    // Apply all diffs forward
+    // Apply patches
     let newState = state;
-    for (let i = history.currentIndex + 1; i <= targetIndex; i++) {
-      newState = applyStateDiff(newState, history.entries[i]);
-    }
+    const entry = history.entries[targetIndex];
+    
+    logger.debug('[History] Applying patches:', {
+      description: entry.description,
+      patchCount: entry.patches.length
+    });
 
+    newState = applyPatchesToState(newState, entry.patches);
+
+    // Log state transition
+    logger.debug('[History] State transition:', {
+      fromTracks: state.tracks.map((t: Track) => ({
+        id: t.id,
+        clips: t.clips.map((c: ClipWithLayer) => ({
+          id: c.id,
+          startTime: c.startTime,
+          endTime: c.endTime,
+          layer: c.layer,
+          mediaOffset: c.mediaOffset,
+          mediaDuration: c.mediaDuration
+        }))
+      })),
+      toTracks: newState.tracks.map((t: Track) => ({
+        id: t.id,
+        clips: t.clips.map((c: ClipWithLayer) => ({
+          id: c.id,
+          startTime: c.startTime,
+          endTime: c.endTime,
+          layer: c.layer,
+          mediaOffset: c.mediaOffset,
+          mediaDuration: c.mediaDuration
+        }))
+      }))
+    });
+
+    // Update state and history index
     dispatch({
       type: ActionTypes.SET_STATE,
-      payload: newState
+      payload: {
+        ...newState,
+        history: {
+          ...history,
+          currentIndex: targetIndex
+        }
+      }
     });
 
-    dispatch({
-      type: ActionTypes.SET_HISTORY_INDEX,
-      payload: targetIndex
-    });
-
+    // Update previous state
     previousState.current = newState;
+
+    // Wait for next frame to ensure state is updated
+    requestAnimationFrame(() => {
+      // Notify of redo completion
+      window.dispatchEvent(new CustomEvent('history:redo-complete', {
+        detail: {
+          fromIndex: history.currentIndex,
+          toIndex: targetIndex,
+          description: nextDiff.description
+        }
+      }));
+
+      // Force state update to ensure all components re-render
+      dispatch({
+        type: ActionTypes.SET_CURRENT_TIME,
+        payload: state.currentTime
+      });
+    });
   }, [state, dispatch]);
 
   const clearHistory = useCallback(() => {
@@ -174,29 +283,14 @@ export const useTimelineHistory = () => {
     // Otherwise, replay diffs to reach target state
     let currentState = state;
     if (index < history.currentIndex) {
-      // Find nearest previous checkpoint
-      let checkpointIndex = index;
-      while (checkpointIndex > 0 && history.entries[checkpointIndex].type !== 'full') {
-        checkpointIndex--;
-      }
-
-      // Start from checkpoint if found
-      if (history.entries[checkpointIndex].type === 'full') {
-        currentState = { ...history.entries[checkpointIndex].snapshot! };
-        // Apply diffs from checkpoint to target
-        for (let i = checkpointIndex + 1; i <= index; i++) {
-          currentState = applyStateDiff(currentState, history.entries[i]);
-        }
-      } else {
-        // No checkpoint found, apply reverse diffs
-        for (let i = history.currentIndex; i > index; i--) {
-          currentState = applyStateDiff(currentState, history.entries[i], true);
-        }
+      // Apply inverse patches
+      for (let i = history.currentIndex; i > index; i--) {
+        currentState = applyPatchesToState(currentState, history.entries[i].inversePatches);
       }
     } else if (index > history.currentIndex) {
-      // Apply forward diffs
+      // Apply forward patches
       for (let i = history.currentIndex + 1; i <= index; i++) {
-        currentState = applyStateDiff(currentState, history.entries[i]);
+        currentState = applyPatchesToState(currentState, history.entries[i].patches);
       }
     }
 

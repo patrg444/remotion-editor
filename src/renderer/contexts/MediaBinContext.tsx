@@ -13,12 +13,68 @@ interface MediaBinContextValue {
 const MediaBinContext = createContext<MediaBinContextValue | undefined>(undefined);
 
 export const MediaBinProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [items, setItems] = useState<MediaItem[]>([]);
+  // Initialize from window.timelineState if available
+  const [items, setItems] = useState<MediaItem[]>(() => {
+    const win = window as any;
+    logger.debug('Initializing MediaBinContext with state:', win.timelineState);
+    const initialItems = win.timelineState?.mediaBin?.items || [];
+    logger.debug('Initial items:', initialItems);
+    return initialItems;
+  });
   const [selectedItem, setSelectedItem] = useState<MediaItem | null>(null);
+
+  // Listen for timeline state changes
+  React.useEffect(() => {
+    const win = window as any;
+    const handleStateChange = (event: CustomEvent) => {
+      const state = event.detail;
+      logger.debug('State change event:', state);
+      if (state?.mediaBin?.items) {
+        logger.debug('Updating media bin items from state change:', state.mediaBin.items);
+        setItems(state.mediaBin.items);
+      }
+    };
+
+    // Initial state
+    if (win.timelineState?.mediaBin?.items) {
+      logger.debug('Setting initial media bin items:', win.timelineState.mediaBin.items);
+      setItems(win.timelineState.mediaBin.items);
+    }
+
+    // Listen for state changes
+    win.addEventListener('timelineStateChange', handleStateChange as EventListener);
+    logger.debug('Added timelineStateChange listener');
+
+    return () => {
+      win.removeEventListener('timelineStateChange', handleStateChange as EventListener);
+      logger.debug('Removed timelineStateChange listener');
+    };
+  }, []);
+
+  // Log whenever items change
+  React.useEffect(() => {
+    logger.debug('MediaBin items updated:', items);
+  }, [items]);
 
   const addItems = useCallback((newItems: MediaItem[]) => {
     logger.debug('Adding media items:', newItems);
-    setItems(current => [...current, ...newItems]);
+    setItems(current => {
+      const updatedItems = [...current, ...newItems];
+      // Sync with timeline state
+      if ((window as any).timelineDispatch) {
+        (window as any).timelineDispatch({
+          type: 'SET_STATE',
+          payload: {
+            ...(window as any).timelineState,
+            mediaBin: {
+              ...((window as any).timelineState?.mediaBin || {}),
+              items: updatedItems
+            }
+          }
+        });
+      }
+      return updatedItems;
+    });
   }, []);
 
   const removeItem = useCallback((id: string) => {
@@ -40,11 +96,9 @@ export const MediaBinProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     selectItem
   };
 
-  // Expose context for testing
+  // Always expose context for testing
   React.useEffect(() => {
-    if (process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development') {
-      (window as any).mediaBinContext = value;
-    }
+    (window as any).mediaBinContext = value;
   }, [value]);
 
   return (

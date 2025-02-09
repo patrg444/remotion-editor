@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron';
+import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import { Logger } from '../utils/logger';
 import { PaymentHandler } from './PaymentHandler';
 
@@ -10,7 +10,7 @@ export function registerPaymentHandlers(): void {
   const paymentHandler = PaymentHandler.getInstance();
 
   // Payment handlers
-  ipcMain.handle('payment:createCheckout', async (_event, priceId: string) => {
+  ipcMain.handle('payment:createCheckout', async (_event: IpcMainInvokeEvent, priceId: string) => {
     logger.info('payment:createCheckout handler called', { priceId });
     return await paymentHandler.createCheckoutSession(priceId);
   });

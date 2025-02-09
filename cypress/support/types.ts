@@ -1,83 +1,53 @@
 /// <reference types="cypress" />
 
-declare namespace Cypress {
+import { TransitionType } from '../../src/renderer/types/transition';
+
+declare module 'cypress' {
+  interface AUTWindow {
+    useFileOperations: () => {
+      validateFile: (file: File) => Promise<void>;
+      processFile: (file: File) => Promise<{
+        id: string;
+        name: string;
+        type: string;
+        metadata: {
+          duration: number;
+          fps: number;
+          codec: string;
+        };
+      }>;
+    };
+    timelineDispatch: (action: any) => void;
+    timelineState: any;
+    mediaBinContext: any;
+    gc?: () => void;
+    performance?: {
+      memory?: {
+        usedJSHeapSize: number;
+      };
+    };
+  }
+
   interface Chainable<Subject = any> {
-    /**
-     * Wait for timeline to be ready
-     */
     waitForTimeline(): Chainable<void>;
-
-    /**
-     * Wait for media bin to be ready
-     */
     waitForMediaBin(): Chainable<void>;
-
-    /**
-     * Wait for preview to be ready
-     */
     waitForPreview(): Chainable<void>;
-
-    /**
-     * Add track to timeline
-     * @param name Track name
-     * @param type Track type
-     */
     addTrack(name: string, type: string): Chainable<void>;
-
-    /**
-     * Add clip to track
-     * @param trackIndex Track index
-     * @param mediaItem Media item
-     */
     addClip(trackIndex: number, mediaItem: any): Chainable<void>;
-
-    /**
-     * Add media items to media bin
-     * @param items Media items
-     */
     addMediaItems(items: any[]): Chainable<void>;
-
-    /**
-     * Drag clip to new position
-     * @param clipIndex Clip index
-     * @param x X coordinate
-     * @param y Y coordinate
-     */
     dragClip(clipIndex: number, x: number, y: number): Chainable<void>;
-
-    /**
-     * Trim clip
-     * @param clipIndex Clip index
-     * @param edge Edge to trim ('start' or 'end')
-     * @param x X coordinate
-     */
     trimClip(clipIndex: number, edge: 'start' | 'end', x: number): Chainable<void>;
-
-    /**
-     * Select clip
-     * @param clipIndex Clip index
-     */
     selectClip(clipIndex: number): Chainable<void>;
-
-    /**
-     * Play/pause preview
-     */
     togglePlayback(): Chainable<void>;
-
-    /**
-     * Seek to specific time
-     * @param time Time in seconds
-     */
     seekTo(time: number): Chainable<void>;
-
-    /**
-     * Get current playback time
-     */
     getCurrentTime(): Chainable<number>;
-
-    /**
-     * Set up test data
-     */
     setupTestData(): Chainable<void>;
+    
+    // Transition utility commands
+    verifyWebGLContext(transitionId: string): Chainable<void>;
+    verifyShaderCompilation(transitionId: string): Chainable<void>;
+    verifyFramebufferSetup(transitionId: string): Chainable<void>;
+    createTransitionWithVerification(fromClipId: string, toClipId: string, type: TransitionType, params?: any): Chainable<string>;
+    verifyTransitionCleanup(transitionId: string): Chainable<void>;
   }
 }

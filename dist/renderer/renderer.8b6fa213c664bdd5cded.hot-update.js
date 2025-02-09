@@ -1,0 +1,322 @@
+"use strict";
+self["webpackHotUpdateremotion_editor"]("renderer",{
+
+/***/ "./src/renderer/components/TimelineTrack.tsx":
+/*!***************************************************!*\
+  !*** ./src/renderer/components/TimelineTrack.tsx ***!
+  \***************************************************/
+/***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
+
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   TimelineTrack: () => (/* binding */ TimelineTrack)
+/* harmony export */ });
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react */ "./node_modules/react/index.js");
+/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _types_timeline__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../types/timeline */ "./src/renderer/types/timeline.ts");
+/* harmony import */ var _hooks_useTimelineContext__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../hooks/useTimelineContext */ "./src/renderer/hooks/useTimelineContext.ts");
+/* harmony import */ var _TimelineClip__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ./TimelineClip */ "./src/renderer/components/TimelineClip.tsx");
+/* harmony import */ var _hooks_useLayerManagement__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(/*! ../hooks/useLayerManagement */ "./src/renderer/hooks/useLayerManagement.ts");
+/* harmony import */ var _utils_logger__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(/*! ../utils/logger */ "./src/renderer/utils/logger.ts");
+/* harmony import */ var _utils_timelineConstants__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(/*! ../utils/timelineConstants */ "./src/renderer/utils/timelineConstants.ts");
+
+
+
+
+
+
+
+const TimelineTrack = ({ track, isSelected, zoom, fps, onSelectTrack, onSelectClip, onClipDragStart, onClipDragEnd, onToggleVisibility, onUpdateTrack, onDeleteTrack, onMoveTrack }) => {
+    const containerRef = (0,react__WEBPACK_IMPORTED_MODULE_0__.useRef)(null);
+    const { assignLayers, getTrackHeight, getClipTop } = (0,_hooks_useLayerManagement__WEBPACK_IMPORTED_MODULE_4__.useLayerManagement)();
+    const { state, dispatch } = (0,_hooks_useTimelineContext__WEBPACK_IMPORTED_MODULE_2__.useTimelineContext)();
+    // Get clips with optimized layer assignments
+    const clipsWithLayers = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)(() => {
+        const layeredClips = assignLayers(track.clips, track);
+        _utils_logger__WEBPACK_IMPORTED_MODULE_5__.logger.debug('[TimelineTrack] Clips with layers:', {
+            trackId: track.id,
+            clips: layeredClips.map(c => ({
+                id: c.id,
+                layer: c.layer,
+                start: c.startTime,
+                end: c.endTime,
+                mediaOffset: c.mediaOffset,
+                mediaDuration: c.mediaDuration
+            }))
+        });
+        return layeredClips;
+    }, [track, assignLayers]);
+    const handleTrackClick = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((e) => {
+        if (e.currentTarget === e.target) {
+            onSelectTrack(track.id);
+        }
+    }, [track.id, onSelectTrack]);
+    const handleDragEnter = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        _utils_logger__WEBPACK_IMPORTED_MODULE_5__.logger.debug('Track drag enter:', {
+            target: e.target,
+            currentTarget: e.currentTarget,
+            className: e.currentTarget.className
+        });
+        e.currentTarget.classList.add('drag-over');
+    }, []);
+    const handleDragOver = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        _utils_logger__WEBPACK_IMPORTED_MODULE_5__.logger.debug('Track drag over:', {
+            target: e.target,
+            currentTarget: e.currentTarget,
+            className: e.currentTarget.className
+        });
+        e.currentTarget.classList.add('drag-over');
+    }, []);
+    const handleDragLeave = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        _utils_logger__WEBPACK_IMPORTED_MODULE_5__.logger.debug('Track drag leave:', {
+            target: e.target,
+            currentTarget: e.currentTarget,
+            className: e.currentTarget.className
+        });
+        e.currentTarget.classList.remove('drag-over');
+    }, []);
+    const handleDrop = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.currentTarget.classList.remove('drag-over');
+        try {
+            _utils_logger__WEBPACK_IMPORTED_MODULE_5__.logger.debug('Drop event:', {
+                types: e.dataTransfer.types,
+                data: e.dataTransfer.getData('application/json'),
+                target: e.currentTarget.className,
+                currentTarget: e.currentTarget.className,
+                clientX: e.clientX,
+                clientY: e.clientY
+            });
+            const jsonData = e.dataTransfer.getData('application/json');
+            if (!jsonData) {
+                _utils_logger__WEBPACK_IMPORTED_MODULE_5__.logger.error('No JSON data in drop event');
+                return;
+            }
+            const data = JSON.parse(jsonData);
+            _utils_logger__WEBPACK_IMPORTED_MODULE_5__.logger.debug('Parsed drop data:', data);
+            // Log track state
+            _utils_logger__WEBPACK_IMPORTED_MODULE_5__.logger.debug('Track state:', {
+                id: track.id,
+                type: track.type,
+                clips: track.clips?.length || 0
+            });
+            if (data) {
+                // Calculate time position based on drop coordinates
+                const trackRect = e.currentTarget.getBoundingClientRect();
+                const dropX = e.clientX - trackRect.left;
+                const timeScale = _utils_timelineConstants__WEBPACK_IMPORTED_MODULE_6__.TimelineConstants.Scale.getScale(state.zoom);
+                const startTime = Math.max(0, (dropX + state.scrollX) / timeScale); // Convert to time, accounting for scroll
+                _utils_logger__WEBPACK_IMPORTED_MODULE_5__.logger.debug('Time calculations:', {
+                    dropX,
+                    timeScale,
+                    startTime,
+                    trackRect: {
+                        left: trackRect.left,
+                        width: trackRect.width
+                    },
+                    zoom: state.zoom
+                });
+                // Create clip using helper
+                let clip;
+                // Create clip with proper duration properties
+                const initialDuration = data.duration;
+                const baseProps = {
+                    name: data.name,
+                    startTime,
+                    endTime: startTime + initialDuration,
+                    mediaOffset: 0,
+                    mediaDuration: initialDuration,
+                    originalDuration: initialDuration,
+                    initialDuration: initialDuration,
+                    effects: []
+                };
+                _utils_logger__WEBPACK_IMPORTED_MODULE_5__.logger.debug('Creating clip with duration:', {
+                    duration: initialDuration,
+                    mediaDuration: initialDuration,
+                    originalDuration: initialDuration,
+                    startTime,
+                    endTime: startTime + initialDuration,
+                    maxAllowedDuration: initialDuration
+                });
+                switch (data.type) {
+                    case 'video': {
+                        const videoClip = (0,_types_timeline__WEBPACK_IMPORTED_MODULE_1__.createClip)('video', {
+                            ...baseProps,
+                            src: data.path,
+                            transform: {
+                                scale: 1,
+                                rotation: 0,
+                                position: { x: 0, y: 0 },
+                                opacity: 1
+                            }
+                        });
+                        clip = { ...videoClip, layer: 0 };
+                        break;
+                    }
+                    case 'audio': {
+                        const audioClip = (0,_types_timeline__WEBPACK_IMPORTED_MODULE_1__.createClip)('audio', {
+                            ...baseProps,
+                            src: data.path,
+                            volume: 1,
+                            isMuted: false
+                        });
+                        clip = { ...audioClip, layer: 0 };
+                        break;
+                    }
+                    case 'caption': {
+                        const captionClip = (0,_types_timeline__WEBPACK_IMPORTED_MODULE_1__.createClip)('caption', {
+                            ...baseProps,
+                            text: '',
+                            captions: []
+                        });
+                        clip = { ...captionClip, layer: 0 };
+                        break;
+                    }
+                    default:
+                        throw new Error(`Unsupported clip type: ${data.type}`);
+                }
+                _utils_logger__WEBPACK_IMPORTED_MODULE_5__.logger.debug('Created clip:', {
+                    ...clip,
+                    currentDuration: clip.endTime - clip.startTime,
+                    mediaDuration: clip.mediaDuration,
+                    mediaOffset: clip.mediaOffset,
+                    originalDuration: clip.originalDuration,
+                    maxAllowedDuration: clip.originalDuration || clip.mediaDuration,
+                    startTime: clip.startTime,
+                    endTime: clip.endTime
+                });
+                // Ensure track type matches clip type
+                if ((track.type === 'video' && data.type === 'video') ||
+                    (track.type === 'audio' && data.type === 'audio') ||
+                    (track.type === 'caption' && data.type === 'caption')) {
+                    // Update track with new clip
+                    const updatedClips = [...(track.clips || []), clip];
+                    onUpdateTrack(track.id, { clips: updatedClips });
+                    // Update timeline duration if needed
+                    const maxEndTime = Math.max(...updatedClips.map(c => c.endTime));
+                    if (maxEndTime > state.duration) {
+                        dispatch({
+                            type: _types_timeline__WEBPACK_IMPORTED_MODULE_1__.ActionTypes.SET_DURATION,
+                            payload: Math.max(maxEndTime, 10)
+                        });
+                    }
+                }
+                else {
+                    console.error(`Track type (${track.type}) does not match clip type (${data.type})`);
+                    return;
+                }
+                _utils_logger__WEBPACK_IMPORTED_MODULE_5__.logger.debug('Updated timeline:', {
+                    clipEndTime: clip.endTime,
+                    currentDuration: state.duration
+                });
+            }
+        }
+        catch (error) {
+            console.error('Error handling drop:', error);
+        }
+    }, [track.id, track.clips, onUpdateTrack, state, dispatch, state.zoom]);
+    const handleKeyDown = (0,react__WEBPACK_IMPORTED_MODULE_0__.useCallback)((e) => {
+        switch (e.key) {
+            case 'Enter':
+            case ' ':
+                e.preventDefault();
+                onSelectTrack(track.id);
+                break;
+            case 'ArrowUp':
+                e.preventDefault();
+                // Focus previous track
+                const prevTrack = containerRef.current?.previousElementSibling;
+                if (prevTrack instanceof HTMLElement) {
+                    prevTrack.focus();
+                }
+                break;
+            case 'ArrowDown':
+                e.preventDefault();
+                // Focus next track
+                const nextTrack = containerRef.current?.nextElementSibling;
+                if (nextTrack instanceof HTMLElement) {
+                    nextTrack.focus();
+                }
+                break;
+            case 'Tab':
+                // Let default tab behavior work, but ensure clips are in tab order
+                if (e.shiftKey && isSelected) {
+                    // When shift+tab on selected track, focus last clip
+                    const clips = containerRef.current?.querySelectorAll('.timeline-clip');
+                    const lastClip = clips?.[clips.length - 1];
+                    if (lastClip instanceof HTMLElement) {
+                        e.preventDefault();
+                        lastClip.focus();
+                    }
+                }
+                break;
+        }
+    }, [track.id, onSelectTrack, isSelected]);
+    const layeredClips = clipsWithLayers();
+    const trackHeight = getTrackHeight(layeredClips);
+    // Log track state before rendering
+    _utils_logger__WEBPACK_IMPORTED_MODULE_5__.logger.debug('[TimelineTrack] Rendering track:', {
+        trackId: track.id,
+        clipCount: layeredClips.length,
+        trackHeight,
+        clips: layeredClips.map(clip => ({
+            id: clip.id,
+            startTime: clip.startTime,
+            endTime: clip.endTime,
+            layer: clip.layer,
+            mediaOffset: clip.mediaOffset,
+            mediaDuration: clip.mediaDuration
+        }))
+    });
+    return (react__WEBPACK_IMPORTED_MODULE_0___default().createElement("div", { ref: containerRef, "data-testid": "timeline-track", className: `timeline-track ${isSelected ? 'selected' : ''} ${track.type} ${!track.clips?.length ? 'empty' : ''}`, onClick: handleTrackClick, onKeyDown: handleKeyDown, role: "region", "aria-label": `${track.name} track`, "aria-selected": isSelected, tabIndex: 0, style: {
+            opacity: track.isVisible ? 1 : 0.5
+        } },
+        react__WEBPACK_IMPORTED_MODULE_0___default().createElement("div", { "data-testid": "track-content", className: "track-content", role: "list", "aria-label": `Clips in ${track.name}`, onDragEnter: handleDragEnter, onDragOver: handleDragOver, onDragLeave: handleDragLeave, onDrop: handleDrop, onMouseDown: (e) => {
+                if (e.target === e.currentTarget) {
+                    handleTrackClick(e);
+                }
+            }, onMouseMove: (e) => {
+                _utils_logger__WEBPACK_IMPORTED_MODULE_5__.logger.debug('[TimelineTrack] Mouse move:', {
+                    clientX: e.clientX,
+                    offsetX: e.nativeEvent.offsetX,
+                    trackId: track.id,
+                    zoom: state.zoom,
+                    scale: _utils_timelineConstants__WEBPACK_IMPORTED_MODULE_6__.TimelineConstants.Scale.getScale(state.zoom)
+                });
+            } }, layeredClips.map((clip, index) => {
+            _utils_logger__WEBPACK_IMPORTED_MODULE_5__.logger.debug('[TimelineTrack] Rendering clip:', {
+                clipId: clip.id,
+                index,
+                startTime: clip.startTime,
+                endTime: clip.endTime,
+                layer: clip.layer,
+                mediaOffset: clip.mediaOffset,
+                mediaDuration: clip.mediaDuration,
+                top: getClipTop(clip.layer)
+            });
+            return (react__WEBPACK_IMPORTED_MODULE_0___default().createElement(_TimelineClip__WEBPACK_IMPORTED_MODULE_3__.TimelineClip, { key: clip.id, clip: clip, track: track, layer: clip.layer, zoom: state.zoom, fps: state.fps, onSelect: () => onSelectClip(clip.id), onDragStart: () => onClipDragStart(clip.id), onDragEnd: onClipDragEnd, tabIndex: isSelected ? 0 : -1, "aria-posinset": index + 1, "aria-setsize": layeredClips.length, style: {
+                    top: getClipTop(clip.layer)
+                } }));
+        }))));
+};
+
+
+/***/ })
+
+},
+/******/ function(__webpack_require__) { // webpackRuntimeModules
+/******/ /* webpack/runtime/getFullHash */
+/******/ (() => {
+/******/ 	__webpack_require__.h = () => ("902a2778f17ddf24a92c")
+/******/ })();
+/******/ 
+/******/ }
+);
+//# sourceMappingURL=renderer.8b6fa213c664bdd5cded.hot-update.js.map

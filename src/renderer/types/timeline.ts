@@ -1,4 +1,25 @@
-import { StateDiff } from '../utils/historyDiff';
+import { Patch } from 'immer';
+import { StateDiff } from './history';
+import { TransitionType } from './transition';
+
+export type CaptionStyle = {
+  color?: string;
+  fontSize?: number;
+  fontFamily?: string;
+  backgroundColor?: string;
+  textAlign?: 'left' | 'center' | 'right';
+  position?: { x: number; y: number };
+};
+
+export type TimelineMarker = Marker;
+
+export type SnapPoint = {
+  time: number;
+  type: 'frame' | 'clip' | 'marker';
+  source?: string;
+};
+
+export type ClipEffect = Effect;
 
 export type Effect = {
   id: string;
@@ -146,20 +167,6 @@ export type Clip = VideoClip | AudioClip | CaptionClip;
 export type ClipWithLayer = Clip & { layer: number };
 export type ProductionClip = VideoClip | AudioClip | CaptionClip;
 
-// Action creator for updating clip transform
-export const createUpdateClipTransformAction = (clipId: string, transform: {
-  scale?: number;
-  rotation?: number;
-  position?: { x: number; y: number };
-  opacity?: number;
-}): TimelineAction => ({
-  type: ActionTypes.UPDATE_CLIP,
-  payload: {
-    clipId,
-    clip: { transform }
-  }
-});
-
 export type TrackType = 'video' | 'audio' | 'caption';
 
 export type Track = {
@@ -176,6 +183,9 @@ export type Track = {
   color?: string;
   isEditing?: boolean;
   transitions?: TrackTransition[];
+  allowTransitions?: boolean;
+  transitionsEnabled?: boolean;
+  showTransitions?: boolean;
 };
 
 export type Speaker = {
@@ -198,10 +208,11 @@ export type Caption = {
 
 export type TrackTransition = {
   id: string;
-  type: string;
+  type: TransitionType;
   clipAId: string;
   clipBId: string;
   duration: number;
+  params?: Record<string, any>;
 };
 
 export type Marker = {
@@ -211,39 +222,6 @@ export type Marker = {
   color?: string;
   type?: string;
 };
-
-export type TimelineMarker = {
-  id: string;
-  time: number;
-  label: string;
-  type: string;
-  color?: string;
-};
-
-export type SnapPoint = {
-  time: number;
-  type: 'clip-start' | 'clip-end' | 'playhead' | 'marker';
-  source: string;
-};
-
-export type ClipEffect = {
-  id: string;
-  type: string;
-  parameters: Record<string, any>;
-  keyframes?: Array<{
-    time: number;
-    value: any;
-  }>;
-};
-
-export interface CaptionStyle {
-  color?: string;
-  fontSize?: number;
-  fontFamily?: string;
-  backgroundColor?: string;
-  textAlign?: 'left' | 'center' | 'right';
-  speakers?: Record<string, Speaker>;
-}
 
 export type TimelineState = {
   tracks: Track[];
@@ -273,14 +251,16 @@ export type TimelineState = {
   showWaveforms?: boolean;
   showKeyframes?: boolean;
   showTransitions?: boolean;
-  showEffects?: boolean;
-  renderQuality?: 'draft' | 'preview' | 'full';
+  showEffects: boolean;
+  renderQuality: 'draft' | 'preview' | 'full';
   isSnappingEnabled: boolean;
+  rippleState: Record<string, { initialExtensionDone: boolean }>;
 };
 
 export const ActionTypes = {
   // Timeline state
   SET_STATE: 'SET_STATE',
+  CLEAR_STATE: 'CLEAR_STATE',
   SET_CURRENT_TIME: 'SET_CURRENT_TIME',
   SET_DURATION: 'SET_DURATION',
   SET_ZOOM: 'SET_ZOOM',
@@ -373,7 +353,6 @@ export type TimelineContextType = {
   dispatch: (action: TimelineAction) => void;
 };
 
-// Re-export TimelineContextType as TimelineContextValue for backward compatibility
 export type TimelineContextValue = TimelineContextType;
 
 export const isVideoClip = (clip: Clip): clip is VideoClip => clip.type === 'video';
@@ -408,6 +387,9 @@ export const initialTimelineState: TimelineState = {
   history: {
     entries: [],
     currentIndex: -1
+  } as {
+    entries: StateDiff[];
+    currentIndex: number;
   },
   aspectRatio: '16:9',
   snapToGrid: true,
@@ -416,9 +398,23 @@ export const initialTimelineState: TimelineState = {
   showKeyframes: true,
   showTransitions: true,
   showEffects: true,
-  renderQuality: 'preview',
-  isSnappingEnabled: true
+  renderQuality: 'preview' as const,
+  isSnappingEnabled: true,
+  rippleState: {} as Record<string, { initialExtensionDone: boolean }>
 };
+
+export const createUpdateClipTransformAction = (
+  trackId: string,
+  clipId: string,
+  transform: VideoClip['transform']
+): TimelineAction => ({
+  type: ActionTypes.UPDATE_CLIP,
+  payload: {
+    trackId,
+    clipId,
+    clip: { transform }
+  }
+});
 
 export const createClip = (type: 'video' | 'audio' | 'caption', props: any): Clip => {
   const duration = props.endTime - props.startTime;
@@ -445,7 +441,8 @@ export const createClip = (type: 'video' | 'audio' | 'caption', props: any): Cli
       startPosition: mediaOffset,
       endPosition: mediaOffset + (props.endTime - props.startTime)
     },
-    effects: props.effects || []
+    effects: props.effects || [],
+    thumbnail: props.thumbnail
   };
 
   switch (type) {

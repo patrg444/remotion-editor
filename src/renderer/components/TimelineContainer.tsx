@@ -55,6 +55,24 @@ export const TimelineContainer: React.FC = () => {
     logger.debug('Timeline time updated:', time);
   }, [dispatch]);
 
+  // Handle mousewheel zoom
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const delta = -e.deltaY;
+      const zoomFactor = 1 + (delta / 1000);
+      const newZoom = Math.min(
+        Math.max(state.zoom * zoomFactor, TimelineConstants.Scale.MIN_ZOOM),
+        TimelineConstants.Scale.MAX_ZOOM
+      );
+      
+      dispatch({
+        type: ActionTypes.SET_ZOOM,
+        payload: newZoom
+      });
+    }
+  }, [dispatch, state.zoom]);
+
   const handleAddTrack = useCallback(() => {
     dispatch({
       type: ActionTypes.ADD_TRACK,
@@ -80,7 +98,8 @@ export const TimelineContainer: React.FC = () => {
         position: 'relative',
         width: '100%',
         height: '100%',
-        overflow: 'hidden',
+        overflowX: 'visible',
+        overflowY: 'visible',
         userSelect: 'none',
         touchAction: 'none',
         backgroundColor: '#1a1a1a',
@@ -133,8 +152,12 @@ export const TimelineContainer: React.FC = () => {
           left: 0,
           right: 0,
           bottom: 0,
-          overflow: 'hidden'
+          overflowX: 'visible',
+          overflowY: 'visible',
+          WebkitOverflowScrolling: 'touch',
+          maxHeight: 'calc(100vh - 46px)' // Subtract toolbar height
         }}
+        onWheel={handleWheel}
       >
         <Timeline
           containerWidth={Math.max(0, containerWidth - 200)} // Subtract label width

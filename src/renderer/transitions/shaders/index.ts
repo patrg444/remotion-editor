@@ -9,7 +9,7 @@ const defaultVertexShader = `
   }
 `;
 
-export const transitions: Record<string, TransitionDefinition> = {
+export const transitions: Record<TransitionType, TransitionDefinition> = {
   [TransitionType.Dissolve]: {
     name: 'Dissolve',
     type: TransitionType.Dissolve,
@@ -35,10 +35,14 @@ export const transitions: Record<string, TransitionDefinition> = {
       }
     `,
     uniforms: {
-      progress: createFloat('progress', 0, 0, 1, 'Transition progress'),
-      noiseScale: createFloat('noiseScale', 50, 1, 100, 'Noise scale'),
-      fromTexture: createSampler2D('fromTexture', 'Source texture'),
-      toTexture: createSampler2D('toTexture', 'Target texture'),
+      progress: createFloat('progress', 0),
+      noiseScale: createFloat('noiseScale', 50),
+      fromTexture: createSampler2D('fromTexture'),
+      toTexture: createSampler2D('toTexture'),
+    },
+    defaultParams: {
+      easing: 'linear',
+      intensity: 50
     },
   },
 
@@ -61,9 +65,12 @@ export const transitions: Record<string, TransitionDefinition> = {
       }
     `,
     uniforms: {
-      progress: createFloat('progress', 0, 0, 1, 'Transition progress'),
-      fromTexture: createSampler2D('fromTexture', 'Source texture'),
-      toTexture: createSampler2D('toTexture', 'Target texture'),
+      progress: createFloat('progress', 0),
+      fromTexture: createSampler2D('fromTexture'),
+      toTexture: createSampler2D('toTexture'),
+    },
+    defaultParams: {
+      easing: 'linear'
     },
   },
 
@@ -91,10 +98,14 @@ export const transitions: Record<string, TransitionDefinition> = {
       }
     `,
     uniforms: {
-      progress: createFloat('progress', 0, 0, 1, 'Transition progress'),
-      direction: createVec2('direction', [1, 0], 'Wipe direction'),
-      fromTexture: createSampler2D('fromTexture', 'Source texture'),
-      toTexture: createSampler2D('toTexture', 'Target texture'),
+      progress: createFloat('progress', 0),
+      direction: createVec2('direction', [1, 0] as [number, number]),
+      fromTexture: createSampler2D('fromTexture'),
+      toTexture: createSampler2D('toTexture'),
+    },
+    defaultParams: {
+      direction: 'right',
+      easing: 'linear'
     },
   },
 
@@ -129,10 +140,14 @@ export const transitions: Record<string, TransitionDefinition> = {
       }
     `,
     uniforms: {
-      progress: createFloat('progress', 0, 0, 1, 'Transition progress'),
-      direction: createVec2('direction', [1, 0], 'Slide direction'),
-      fromTexture: createSampler2D('fromTexture', 'Source texture'),
-      toTexture: createSampler2D('toTexture', 'Target texture'),
+      progress: createFloat('progress', 0),
+      direction: createVec2('direction', [1, 0] as [number, number]),
+      fromTexture: createSampler2D('fromTexture'),
+      toTexture: createSampler2D('toTexture'),
+    },
+    defaultParams: {
+      direction: 'right',
+      easing: 'linear'
     },
   },
 
@@ -153,9 +168,12 @@ export const transitions: Record<string, TransitionDefinition> = {
       }
     `,
     uniforms: {
-      progress: createFloat('progress', 0, 0, 1, 'Transition progress'),
-      fromTexture: createSampler2D('fromTexture', 'Source texture'),
-      toTexture: createSampler2D('toTexture', 'Target texture'),
+      progress: createFloat('progress', 0),
+      fromTexture: createSampler2D('fromTexture'),
+      toTexture: createSampler2D('toTexture'),
+    },
+    defaultParams: {
+      easing: 'linear'
     },
   },
 
@@ -181,11 +199,16 @@ export const transitions: Record<string, TransitionDefinition> = {
       }
     `,
     uniforms: {
-      progress: createFloat('progress', 0, 0, 1, 'Transition progress'),
-      fromTexture: createSampler2D('fromTexture', 'Source texture'),
-      toTexture: createSampler2D('toTexture', 'Target texture'),
-      direction: createVec2('direction', [0, 0], 'Zoom direction'),
-      scale: createFloat('scale', 2, 1, 10, 'Zoom scale factor'),
+      progress: createFloat('progress', 0),
+      fromTexture: createSampler2D('fromTexture'),
+      toTexture: createSampler2D('toTexture'),
+      direction: createVec2('direction', [0, 0] as [number, number]),
+      scale: createFloat('scale', 2),
+    },
+    defaultParams: {
+      direction: 'right',
+      easing: 'linear',
+      intensity: 2
     },
   },
 
@@ -209,10 +232,14 @@ export const transitions: Record<string, TransitionDefinition> = {
       }
     `,
     uniforms: {
-      progress: createFloat('progress', 0, 0, 1, 'Transition progress'),
-      fromTexture: createSampler2D('fromTexture', 'Source texture'),
-      toTexture: createSampler2D('toTexture', 'Target texture'),
-      direction: createVec2('direction', [1, 0], 'Push direction'),
+      progress: createFloat('progress', 0),
+      fromTexture: createSampler2D('fromTexture'),
+      toTexture: createSampler2D('toTexture'),
+      direction: createVec2('direction', [1, 0] as [number, number]),
+    },
+    defaultParams: {
+      direction: 'right',
+      easing: 'linear'
     },
   },
 };

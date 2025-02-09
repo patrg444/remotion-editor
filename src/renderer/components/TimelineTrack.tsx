@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Track, Clip, ClipWithLayer, Effect, ActionTypes, createClip } from '../types/timeline';
+import { Track, Clip, ClipWithLayer, Effect, ActionTypes, createClip, isVideoClip } from '../types/timeline';
+import { TransitionType } from '../types/transition';
 import { useTimelineContext } from '../hooks/useTimelineContext';
 import { TimelineClip } from './TimelineClip';
 import { TimelineTransition } from './TimelineTransition';
@@ -37,25 +38,108 @@ export const TimelineTrack: React.FC<TimelineTrackProps> = ({
   onMoveTrack
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const trackContentRef = useRef<HTMLDivElement>(null);
   const { assignLayers, getTrackHeight, getClipTop } = useLayerManagement();
   const { state, dispatch } = useTimelineContext();
 
-  // Get clips with optimized layer assignments
+  // Get clips with optimized layer assignments and notify track ready
   const clipsWithLayers = useCallback(() => {
     const layeredClips = assignLayers(track.clips, track);
-
-    logger.debug('Track clips with layers:', {
-      trackId: track.id,
-      clips: layeredClips.map(c => ({
-        id: c.id,
-        layer: c.layer,
-        start: c.startTime,
-        end: c.endTime
-      }))
+    
+    // Notify that track is ready with current clip count
+    requestAnimationFrame(() => {
+      window.dispatchEvent(new CustomEvent('track:ready', {
+        detail: {
+          trackId: track.id,
+          clipCount: layeredClips.length,
+          clips: layeredClips.map(c => ({
+            id: c.id,
+            startTime: c.startTime,
+            endTime: c.endTime,
+            layer: c.layer
+          }))
+        }
+      }));
     });
 
     return layeredClips;
   }, [track, assignLayers]);
+
+  // Handle clip updates
+  useEffect(() => {
+    const handleClipRendered = (e: CustomEvent) => {
+      const { clipId } = e.detail;
+      if (track.clips.some(c => c.id === clipId)) {
+        requestAnimationFrame(() => {
+          window.dispatchEvent(new CustomEvent('track:ready', {
+            detail: {
+              trackId: track.id,
+              clipCount: track.clips.length,
+              clips: track.clips.map(c => ({
+                id: c.id,
+                startTime: c.startTime,
+                endTime: c.endTime,
+                layer: c.layer
+              }))
+            }
+          }));
+        });
+      }
+    };
+
+    window.addEventListener('clip:rendered', handleClipRendered as EventListener);
+    return () => {
+      window.removeEventListener('clip:rendered', handleClipRendered as EventListener);
+    };
+  }, [track.id, track.clips]);
+
+  // Handle track updates and positioning
+  useEffect(() => {
+    if (containerRef.current && trackContentRef.current) {
+      const height = getTrackHeight(clipsWithLayers());
+      containerRef.current.style.height = `${height}px`;
+      trackContentRef.current.style.height = `${height}px`;
+
+      // Force reflow to ensure height is applied
+      void containerRef.current.offsetHeight;
+      void trackContentRef.current.offsetHeight;
+
+      // Notify that track is ready
+      window.dispatchEvent(new CustomEvent('track:ready', {
+        detail: {
+          trackId: track.id,
+          height,
+          clipCount: track.clips.length
+        }
+      }));
+
+      // Wait for next frame to ensure DOM is updated
+      requestAnimationFrame(() => {
+        if (containerRef.current && trackContentRef.current) {
+          // Get final dimensions after styles are applied
+          const containerRect = containerRef.current.getBoundingClientRect();
+          const contentRect = trackContentRef.current.getBoundingClientRect();
+
+          // Notify that track is positioned
+          window.dispatchEvent(new CustomEvent('track:positioned', {
+            detail: {
+              trackId: track.id,
+              containerHeight: containerRect.height,
+              contentHeight: contentRect.height,
+              clipCount: track.clips.length
+            }
+          }));
+
+          logger.debug('[TimelineTrack] Track positioned:', {
+            trackId: track.id,
+            containerRect,
+            contentRect,
+            clipCount: track.clips.length
+          });
+        }
+      });
+    }
+  }, [track.id, track.clips.length, clipsWithLayers, getTrackHeight]);
 
   const handleTrackClick = useCallback((e: React.MouseEvent) => {
     if (e.currentTarget === e.target) {
@@ -120,13 +204,6 @@ export const TimelineTrack: React.FC<TimelineTrackProps> = ({
       const data = JSON.parse(jsonData);
       logger.debug('Parsed drop data:', data);
 
-      // Log track state
-      logger.debug('Track state:', {
-        id: track.id,
-        type: track.type,
-        clips: track.clips?.length || 0
-      });
-
       if (data) {
         // Calculate time position based on drop coordinates
         const trackRect = e.currentTarget.getBoundingClientRect();
@@ -134,40 +211,20 @@ export const TimelineTrack: React.FC<TimelineTrackProps> = ({
         const timeScale = TimelineConstants.Scale.getScale(state.zoom);
         const startTime = Math.max(0, (dropX + state.scrollX) / timeScale); // Convert to time, accounting for scroll
 
-        logger.debug('Time calculations:', {
-          dropX,
-          timeScale,
-          startTime,
-          trackRect: {
-            left: trackRect.left,
-            width: trackRect.width
-          },
-          zoom: state.zoom
-        });
-
         // Create clip using helper
         let clip: ClipWithLayer;
-          // Create clip with proper duration properties
-          const initialDuration = data.duration;
-          const baseProps = {
-            name: data.name,
-            startTime,
-            endTime: startTime + initialDuration,
-            mediaOffset: 0,
-            mediaDuration: initialDuration,
-            originalDuration: initialDuration, // Store the initial duration
-            initialDuration: initialDuration, // Add a new property to track initial duration
-            effects: []
-          };
-
-          logger.debug('Creating clip with duration:', {
-            duration: initialDuration,
-            mediaDuration: initialDuration,
-            originalDuration: initialDuration,
-            startTime,
-            endTime: startTime + initialDuration,
-            maxAllowedDuration: initialDuration
-          });
+        // Create clip with proper duration properties
+        const initialDuration = data.duration;
+        const baseProps = {
+          name: data.name,
+          startTime,
+          endTime: startTime + initialDuration,
+          mediaOffset: 0,
+          mediaDuration: initialDuration,
+          originalDuration: initialDuration, // Store the initial duration
+          initialDuration: initialDuration, // Add a new property to track initial duration
+          effects: []
+        };
 
         switch (data.type) {
           case 'video': {
@@ -207,17 +264,6 @@ export const TimelineTrack: React.FC<TimelineTrackProps> = ({
             throw new Error(`Unsupported clip type: ${data.type}`);
         }
 
-        logger.debug('Created clip:', {
-          ...clip,
-          currentDuration: clip.endTime - clip.startTime,
-          mediaDuration: clip.mediaDuration,
-          mediaOffset: clip.mediaOffset,
-          originalDuration: clip.originalDuration,
-          maxAllowedDuration: clip.originalDuration || clip.mediaDuration,
-          startTime: clip.startTime,
-          endTime: clip.endTime
-        });
-
         // Ensure track type matches clip type
         if ((track.type === 'video' && data.type === 'video') ||
             (track.type === 'audio' && data.type === 'audio') ||
@@ -234,15 +280,23 @@ export const TimelineTrack: React.FC<TimelineTrackProps> = ({
               payload: Math.max(maxEndTime, 10)
             });
           }
+
+          // Wait for next frame to ensure clip is added
+          requestAnimationFrame(() => {
+            // Notify that clip was added
+            window.dispatchEvent(new CustomEvent('track:clip-added', {
+              detail: {
+                trackId: track.id,
+                clipId: clip.id,
+                startTime,
+                endTime: startTime + initialDuration
+              }
+            }));
+          });
         } else {
           console.error(`Track type (${track.type}) does not match clip type (${data.type})`);
           return;
         }
-
-        logger.debug('Updated timeline:', {
-          clipEndTime: clip.endTime,
-          currentDuration: state.duration
-        });
       }
     } catch (error) {
       console.error('Error handling drop:', error);
@@ -288,12 +342,13 @@ export const TimelineTrack: React.FC<TimelineTrackProps> = ({
   }, [track.id, onSelectTrack, isSelected]);
 
   const layeredClips = clipsWithLayers();
-  const trackHeight = getTrackHeight(layeredClips);
+  const trackHeight = Math.max(TimelineConstants.UI.TRACK_HEIGHT, getTrackHeight(layeredClips));
 
   return (
     <div 
       ref={containerRef}
       data-testid="timeline-track"
+      data-track-id={track.id}
       className={`timeline-track ${isSelected ? 'selected' : ''} ${track.type} ${!track.clips?.length ? 'empty' : ''}`}
       onClick={handleTrackClick}
       onKeyDown={handleKeyDown}
@@ -302,58 +357,130 @@ export const TimelineTrack: React.FC<TimelineTrackProps> = ({
       aria-selected={isSelected}
       tabIndex={0}
       style={{
-        opacity: track.isVisible ? 1 : 0.5
+        opacity: track.isVisible ? 1 : 0.5,
+        height: `${trackHeight}px`
       }}
     >
       <div 
+        ref={trackContentRef}
         data-testid="track-content"
         className="track-content"
         role="list"
         aria-label={`Clips in ${track.name}`}
-        onDragEnter={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          e.currentTarget.classList.add('drag-over');
-        }}
-        onDragOver={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          e.currentTarget.classList.add('drag-over');
-        }}
-        onDragLeave={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          const rect = e.currentTarget.getBoundingClientRect();
-          if (
-            e.clientX <= rect.left ||
-            e.clientX >= rect.right ||
-            e.clientY <= rect.top ||
-            e.clientY >= rect.bottom
-          ) {
-            e.currentTarget.classList.remove('drag-over');
-          }
-        }}
-        onDrop={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          e.currentTarget.classList.remove('drag-over');
-          handleDrop(e);
-        }}
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
         onMouseDown={(e) => {
           if (e.target === e.currentTarget) {
             handleTrackClick(e);
           }
         }}
-        onMouseMove={(e) => {
-          logger.debug('Track mouse move:', {
-            clientX: e.clientX,
-            offsetX: e.nativeEvent.offsetX,
-            trackId: track.id,
-            zoom: state.zoom,
-            scale: TimelineConstants.Scale.getScale(state.zoom)
-          });
+        style={{
+          height: `${trackHeight}px`
         }}
       >
+        {/* Render transitions */}
+        {(() => {
+          console.log('Track state before rendering transitions:', {
+            id: track.id,
+            type: track.type,
+            allowTransitions: track.allowTransitions,
+            transitionsEnabled: track.transitionsEnabled,
+            showTransitions: track.showTransitions,
+            transitions: track.transitions,
+            clips: track.clips.map(c => ({
+              id: c.id,
+              startTime: c.startTime,
+              endTime: c.endTime
+            })),
+            layeredClips: layeredClips.map(c => ({
+              id: c.id,
+              startTime: c.startTime,
+              endTime: c.endTime,
+              layer: c.layer
+            }))
+          });
+
+          const transitions = track.transitions || [];
+          
+          if (!Array.isArray(transitions) || !transitions.length) {
+            console.log('No valid transitions found in track:', {
+              transitions,
+              isArray: Array.isArray(transitions),
+              length: transitions?.length
+            });
+            return null;
+          }
+
+          if (!track.allowTransitions || !track.transitionsEnabled || !track.showTransitions) {
+            console.log('Transitions are disabled:', {
+              allowTransitions: track.allowTransitions,
+              transitionsEnabled: track.transitionsEnabled,
+              showTransitions: track.showTransitions
+            });
+            return null;
+          }
+
+          console.log('Rendering transitions:', {
+            transitions: track.transitions,
+            allowTransitions: track.allowTransitions,
+            transitionsEnabled: track.transitionsEnabled,
+            showTransitions: track.showTransitions
+          });
+
+          return transitions.map((transition) => {
+            if (!transition) {
+              console.log('Invalid transition:', transition);
+              return null;
+            }
+            console.log('Rendering transition:', {
+              transition,
+              clipA: layeredClips.find(c => c.id === transition.clipAId),
+              clipB: layeredClips.find(c => c.id === transition.clipBId)
+            });
+            const clipA = layeredClips.find(c => c.id === transition.clipAId);
+            const clipB = layeredClips.find(c => c.id === transition.clipBId);
+            
+            if (!clipA || !clipB) {
+              console.log('Could not find clips for transition:', {
+                transition,
+                clipAFound: !!clipA,
+                clipBFound: !!clipB,
+                availableClips: layeredClips.map(c => c.id)
+              });
+              return null;
+            }
+            
+            return (
+              <TimelineTransition
+                key={transition.id}
+                id={transition.id}
+                type={transition.type as TransitionType}
+                startTime={clipA.endTime - transition.duration}
+                endTime={clipB.startTime + transition.duration}
+                duration={transition.duration}
+                clipAId={clipA.id}
+                clipBId={clipB.id}
+                clipAThumbnail={isVideoClip(clipA) ? clipA.thumbnail : undefined}
+                clipBThumbnail={isVideoClip(clipB) ? clipB.thumbnail : undefined}
+                direction={transition.params?.direction || 'right'}
+                params={transition.params}
+                onDurationChange={(newDuration) => {
+                  dispatch({
+                    type: ActionTypes.UPDATE_TRANSITION,
+                    payload: {
+                      transitionId: transition.id,
+                      params: { duration: newDuration }
+                    }
+                  });
+                }}
+              />
+            );
+          });
+        })()}
+
+        {/* Render clips */}
         {layeredClips.map((clip, index) => (
           <TimelineClip
             key={clip.id}

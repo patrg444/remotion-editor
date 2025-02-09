@@ -10,15 +10,13 @@
     html, body {
       margin: 0;
       padding: 0;
-      height: 100vh;
+      height: 100%;
       background: #1e1e1e;
       color: #ffffff;
       overflow: hidden;
     }
     #root {
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
+      height: 100%;
     }
     .app-loading {
       position: fixed;
@@ -34,13 +32,13 @@
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     }
   </style>
-</head>
+<script defer src="renderer.js"></script></head>
 <body>
   <div id="root">
     <div class="app-loading">
       Loading editor...
     </div>
   </div>
-  
-<script src="renderer.js"></script></body>
+  <script src="test-import.js"></script>
+</body>
 </html>

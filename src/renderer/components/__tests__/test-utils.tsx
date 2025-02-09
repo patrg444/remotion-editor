@@ -2,6 +2,7 @@ import React from 'react';
 import { render } from '@testing-library/react';
 import { TimelineProvider } from '../../contexts/TimelineContext';
 import { MediaBinProvider } from '../../contexts/MediaBinContext';
+import { TimelineState } from '../../types/timeline';
 
 export const renderWithProviders = (ui: React.ReactElement) => {
   return render(
@@ -25,26 +26,29 @@ export const createTestMediaItem = (overrides = {}) => ({
   ...overrides
 });
 
-export const createTestState = (overrides = {}) => ({
+export const createTestState = (overrides = {}): TimelineState => ({
   tracks: [],
-  mediaItems: [],
   currentTime: 0,
+  duration: 0,
   isPlaying: false,
   isDragging: false,
-  selectedClipIds: [],
-  selectedCaptionIds: [],
-  markers: [],
-  playheadTime: 0,
-  duration: 0,
-  fps: 30,
   zoom: 1,
+  scrollLeft: 0,
   scrollX: 0,
   scrollY: 0,
   aspectRatio: '16:9',
+  selectedClipIds: [],
+  selectedCaptionIds: [],
+  markers: [],
+  fps: 30,
   history: {
     entries: [],
     currentIndex: -1
   },
-  error: null,
+  error: undefined,
+  showEffects: true,
+  renderQuality: 'preview' as const,
+  isSnappingEnabled: true,
+  rippleState: {},
   ...overrides
 });

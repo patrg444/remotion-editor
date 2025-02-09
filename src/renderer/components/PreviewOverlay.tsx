@@ -31,7 +31,7 @@ export const PreviewOverlay: React.FC<PreviewOverlayProps> = ({
   previewWidth,
   previewHeight,
 }) => {
-  const { dispatch } = useTimelineContext();
+  const { state, dispatch } = useTimelineContext();
   const overlayRef = useRef<HTMLDivElement>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [overlayClass, setOverlayClass] = useState('preview-overlay');
@@ -100,7 +100,12 @@ export const PreviewOverlay: React.FC<PreviewOverlayProps> = ({
         break;
     }
 
-    dispatch(createUpdateClipTransformAction(selectedClip.id, newTransform));
+    // Find the track containing this clip
+    const track = state.tracks.find(track => 
+      track.clips.some(clip => clip.id === selectedClip.id)
+    );
+    if (!track) return;
+    dispatch(createUpdateClipTransformAction(track.id, selectedClip.id, newTransform));
   }, [dragState, selectedClip, dispatch]);
 
   const handleMouseUp = useCallback(() => {

@@ -3,9 +3,11 @@ import { MediaItem } from '../types/media-bin';
 import { useFileOperations } from '../hooks/useFileOperations';
 import { logger } from '../utils/logger';
 import { useMediaBin } from '../contexts/MediaBinContext';
+import '../styles/media-bin.css';
 
 interface MediaItemProps {
   item: MediaItem;
+  selectedItem: MediaItem | null;
   onDragStart: (item: MediaItem) => void;
   onDragEnd: () => void;
   onClick?: (item: MediaItem) => void;
@@ -20,10 +22,15 @@ interface ErrorMessage {
   timeout?: NodeJS.Timeout;
 }
 
-import '../styles/media-bin.css';
+const formatDuration = (seconds: number): string => {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+};
 
 const MediaItemComponent: React.FC<MediaItemProps> = ({
   item,
+  selectedItem,
   onDragStart,
   onDragEnd,
   onClick,
@@ -61,18 +68,32 @@ const MediaItemComponent: React.FC<MediaItemProps> = ({
 
   return (
     <div
-      className="media-asset-item"
+      className={`media-asset-item ${selectedItem?.id === item.id || selectedItem === item ? 'selected' : ''}`}
       draggable="true"
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onClick={() => onClick?.(item)}
+      onKeyDown={(e) => {
+        if (e.key === ' ' || e.key === 'Enter') {
+          e.preventDefault();
+          onClick?.(item);
+        }
+      }}
       data-testid="media-bin-item"
+      data-item-id={item.id}
+      data-type={item.type}
+      role="button"
+      tabIndex={0}
+      aria-selected={selectedItem?.id === item.id}
     >
       <div className="media-asset-thumbnail">
         {item.thumbnail ? (
           <img src={item.thumbnail} alt={item.name} />
         ) : (
-          <div className="media-asset-placeholder">
+          <div 
+            className="media-asset-placeholder"
+            aria-label={item.type.charAt(0).toUpperCase() + item.type.slice(1)}
+          >
             {item.type === 'video' ? '🎥' : item.type === 'audio' ? '🔊' : '🖼️'}
           </div>
         )}
@@ -91,7 +112,11 @@ const MediaBin: React.FC<MediaBinProps> = ({
   className = '',
 }) => {
   const { items, selectedItem, addItems: onImport, selectItem: onSelect } = useMediaBin();
+  logger.debug('MediaBin render:', { items, selectedItem });
   const [isDragOver, setIsDragOver] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragItem, setDragItem] = useState<MediaItem | null>(null);
   const [errorMessage, setErrorMessage] = useState<ErrorMessage | null>(null);
   const { validateFile, processFile } = useFileOperations();
   const objectUrls = React.useRef<string[]>([]);
@@ -118,13 +143,20 @@ const MediaBin: React.FC<MediaBinProps> = ({
   }, [errorMessage]);
 
   const validateAndProcessFile = useCallback(async (file: File) => {
-    // Check for duplicates first
+    // Check file size (2GB limit)
+    const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB in bytes
+    if (file.size > MAX_FILE_SIZE) {
+      showError('File size exceeds limit (2GB)');
+      return null;
+    }
+
+    // Check for duplicates
     if (items.some(item => item.name === file.name)) {
       showError(`${file.name} has already been imported`);
       return null;
     }
 
-    // Then validate file
+    // Validate file
     try {
       await validateFile(file);
     } catch (error) {
@@ -134,6 +166,7 @@ const MediaBin: React.FC<MediaBinProps> = ({
 
     // Process file
     try {
+      setIsLoading(true);
       const processedFile = await processFile(file);
       const objectUrl = URL.createObjectURL(file);
       objectUrls.current.push(objectUrl);
@@ -163,6 +196,8 @@ const MediaBin: React.FC<MediaBinProps> = ({
     } catch (error) {
       showError(error instanceof Error ? error.message : 'Error processing file');
       return null;
+    } finally {
+      setIsLoading(false);
     }
   }, [items, validateFile, processFile, showError]);
 
@@ -225,18 +260,41 @@ const MediaBin: React.FC<MediaBinProps> = ({
 
   return (
     <div 
-      className={`media-bin ${className} ${isDragOver ? 'drag-over' : ''}`}
+      className={`media-bin ${className} ${isDragOver ? 'drag-over' : ''} ${isLoading ? 'loading' : ''}`}
       data-testid="media-bin"
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
+      role="region"
+      aria-label="Media Bin"
     >
       {errorMessage && (
         <div className="media-bin-error" role="alert" data-testid="error-message">
           {errorMessage.text}
+          <button 
+            className="error-dismiss"
+            data-testid="error-dismiss"
+            onClick={() => setErrorMessage(null)}
+            aria-label="Dismiss error"
+          >
+            ✕
+          </button>
         </div>
       )}
+
+      {isLoading && (
+        <div className="loading-indicator" data-testid="loading-indicator">
+          Loading...
+        </div>
+      )}
+
+      {isDragging && (
+        <div className="drag-preview" data-testid="drag-preview">
+          {dragItem?.name}
+        </div>
+      )}
+
       <div className="media-bin-header">
         <h2>Media</h2>
         <button 
@@ -259,19 +317,27 @@ const MediaBin: React.FC<MediaBinProps> = ({
       <div className="media-bin-content" data-testid="media-bin-content">
         {items.length > 0 ? (
           <div className="media-bin-items">
-            {items.map((item) => (
-              <MediaItemComponent
-                key={item.id}
-                item={item}
-                onDragStart={(item) => {
-                  logger.debug('Drag started:', item);
-                }}
-                onDragEnd={() => {
-                  logger.debug('Drag ended');
-                }}
-                onClick={(item) => onSelect?.(item)}
-              />
-            ))}
+            {(() => {
+              logger.debug('Rendering media items:', items);
+              return items.map((item) => (
+                <MediaItemComponent
+                  key={item.id}
+                  item={item}
+                  selectedItem={selectedItem}
+                  onDragStart={(item) => {
+                    setIsDragging(true);
+                    setDragItem(item);
+                    logger.debug('Drag started:', item);
+                  }}
+                  onDragEnd={() => {
+                    setIsDragging(false);
+                    setDragItem(null);
+                    logger.debug('Drag ended');
+                  }}
+                  onClick={(item) => onSelect?.(item)}
+                />
+              ));
+            })()}
           </div>
         ) : (
           <div className="media-bin-empty" data-testid="media-bin-empty">
@@ -282,12 +348,6 @@ const MediaBin: React.FC<MediaBinProps> = ({
       </div>
     </div>
   );
-};
-
-const formatDuration = (seconds: number): string => {
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = Math.floor(seconds % 60);
-  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 };
 
 export default MediaBin;

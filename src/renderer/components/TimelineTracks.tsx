@@ -1,4 +1,5 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
+import { TimelineConstants } from '../utils/timelineConstants';
 import { Track } from '../types/timeline';
 import { TimelineTrack } from './TimelineTrack';
 import { TrackControls } from './TrackControls';
@@ -36,13 +37,102 @@ export const TimelineTracks: React.FC<TimelineTracksProps> = ({
   zoom,
   fps
 }) => {
-  // Log track rendering
+  const tracksRef = useRef<HTMLDivElement>(null);
+  const lastTracksRef = useRef<Track[]>(tracks);
+
+  // Handle track updates and positioning
   useEffect(() => {
-    logger.debug('Timeline tracks:', {
-      totalTracks: tracks.length,
-      trackNames: tracks.map(t => t.name)
-    });
-  }, [tracks.length]);
+    const tracksChanged = tracks !== lastTracksRef.current;
+    lastTracksRef.current = tracks;
+
+    if (tracksRef.current) {
+      const height = tracks.length * TimelineConstants.UI.TRACK_HEIGHT;
+      tracksRef.current.style.height = `${height}px`;
+      
+      // Force reflow to ensure height is applied
+      void tracksRef.current.offsetHeight;
+
+      // Notify that tracks container is ready
+      window.dispatchEvent(new CustomEvent('tracks:ready', {
+        detail: {
+          height,
+          trackCount: tracks.length,
+          tracks: tracks.map(t => ({
+            id: t.id,
+            clipCount: t.clips.length,
+            clips: t.clips.map(c => ({
+              id: c.id,
+              startTime: c.startTime,
+              endTime: c.endTime,
+              layer: c.layer
+            }))
+          }))
+        }
+      }));
+
+      // Wait for next frame to ensure DOM is updated
+      requestAnimationFrame(() => {
+        if (tracksRef.current) {
+          // Get final dimensions after styles are applied
+          const rect = tracksRef.current.getBoundingClientRect();
+          
+          // Notify that tracks are positioned
+          window.dispatchEvent(new CustomEvent('tracks:positioned', {
+            detail: {
+              height: rect.height,
+              trackCount: tracks.length,
+              tracks: tracks.map(t => ({
+                id: t.id,
+                clipCount: t.clips.length,
+                clips: t.clips.map(c => ({
+                  id: c.id,
+                  startTime: c.startTime,
+                  endTime: c.endTime,
+                  layer: c.layer
+                }))
+              }))
+            }
+          }));
+
+          // Force another reflow to ensure all updates are applied
+          void tracksRef.current.offsetHeight;
+        }
+      });
+    }
+  }, [tracks]);
+
+  // Handle track ready events
+  useEffect(() => {
+    const handleTrackReady = (e: CustomEvent) => {
+      const { trackId, clipCount } = e.detail;
+      const track = tracks.find(t => t.id === trackId);
+      if (track) {
+        requestAnimationFrame(() => {
+          window.dispatchEvent(new CustomEvent('tracks:ready', {
+            detail: {
+              height: tracks.length * TimelineConstants.UI.TRACK_HEIGHT,
+              trackCount: tracks.length,
+              tracks: tracks.map(t => ({
+                id: t.id,
+                clipCount: t.clips.length,
+                clips: t.clips.map(c => ({
+                  id: c.id,
+                  startTime: c.startTime,
+                  endTime: c.endTime,
+                  layer: c.layer
+                }))
+              }))
+            }
+          }));
+        });
+      }
+    };
+
+    window.addEventListener('track:ready', handleTrackReady as EventListener);
+    return () => {
+      window.removeEventListener('track:ready', handleTrackReady as EventListener);
+    };
+  }, [tracks]);
 
   const handleContainerClick = (e: React.MouseEvent) => {
     // Only deselect if clicking directly on the container (not on tracks)
@@ -67,7 +157,12 @@ export const TimelineTracks: React.FC<TimelineTracksProps> = ({
           />
         ))}
       </div>
-      <div className="timeline-tracks-content" data-testid="timeline-tracks-content" onClick={handleContainerClick}>
+      <div 
+        ref={tracksRef}
+        className="timeline-tracks-content" 
+        data-testid="timeline-tracks-content" 
+        onClick={handleContainerClick}
+      >
         <div 
           className="timeline-tracks-background" 
           style={{ 
@@ -95,8 +190,16 @@ export const TimelineTracks: React.FC<TimelineTracksProps> = ({
           />
         ))}
         {tracks.length === 0 && (
-          <div className="timeline-tracks-empty">
-            <span>No tracks to display</span>
+          <div 
+            className="timeline-tracks-empty"
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('timeline:add-track-requested'));
+            }}
+          >
+            <div className="timeline-tracks-empty-icon">
+              ➕
+            </div>
+            <span>No tracks yet—click to add a track</span>
           </div>
         )}
       </div>

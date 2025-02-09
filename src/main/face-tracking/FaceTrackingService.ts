@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron';
+import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { spawn } from 'child_process';
@@ -19,7 +19,21 @@ export class FaceTrackingService {
             modelPath: this.modelPath,
             samplingRate: 1,  // 1 fps default
             minConfidence: 0.8,
-            useGPU: true
+            useGPU: true,
+            minFaceSize: 0.1,  // 10% of frame height
+            maxFaceSize: 0.8,  // 80% of frame height
+            tracking: true,
+            smoothing: 0.5,    // 50% smoothing
+            zoom: 1.0,         // No initial zoom
+            neutralZone: {
+                size: 0.3,     // 30% of frame size
+                position: {
+                    x: 0.5,    // Center of frame
+                    y: 0.5     // Center of frame
+                },
+                reframeThreshold: 0.2,
+                reframeSpeed: 0.5
+            }
         };
 
         this.initializeIPC();
@@ -164,7 +178,7 @@ if __name__ == '__main__':
         }
     }
 
-    private async handleModelDownload(_event: Electron.IpcMainInvokeEvent, modelUrl: string): Promise<{ success: boolean; error?: string }> {
+    private async handleModelDownload(_event: IpcMainInvokeEvent, modelUrl: string): Promise<{ success: boolean; error?: string }> {
         try {
             if (!fs.existsSync(this.modelPath)) {
                 fs.mkdirSync(this.modelPath, { recursive: true });
@@ -183,7 +197,7 @@ if __name__ == '__main__':
         }
     }
 
-    private async handleProcessVideo(_event: Electron.IpcMainInvokeEvent, videoPath: string): Promise<FaceTrackingResult> {
+    private async handleProcessVideo(_event: IpcMainInvokeEvent, videoPath: string): Promise<FaceTrackingResult> {
         return new Promise((resolve) => {
             if (!fs.existsSync(this.modelPath)) {
                 resolve({ 

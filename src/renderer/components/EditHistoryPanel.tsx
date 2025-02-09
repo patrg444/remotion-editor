@@ -1,7 +1,7 @@
 import React from 'react';
 import { useTimelineContext } from '../contexts/TimelineContext';
 import { ActionTypes } from '../types/timeline';
-import { StateDiff } from '../utils/historyDiff';
+import { StateDiff } from '../types/history';
 import '../styles/edit-history.css';
 
 export const EditHistoryPanel: React.FC = () => {

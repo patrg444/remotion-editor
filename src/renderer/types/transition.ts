@@ -1,204 +1,175 @@
 export enum TransitionType {
   Dissolve = 'dissolve',
+  Crossfade = 'crossfade',
   Fade = 'fade',
   Wipe = 'wipe',
   Slide = 'slide',
-  Crossfade = 'crossfade',
   Zoom = 'zoom',
   Push = 'push'
-}
-
-export interface TransitionParams {
-  direction?: 'left' | 'right' | 'up' | 'down';
-  easing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out';
-  [key: string]: any;
 }
 
 export interface Transition {
   id: string;
   type: TransitionType;
   duration: number;
-  params?: TransitionParams;
-  clipAId?: string;
-  clipBId?: string;
-  startTime?: number;
-  definition?: TransitionDefinition;
-  gpuPreviewEnabled?: boolean;
+  params?: Record<string, any>;
+  clipAId: string;
+  clipBId: string;
   progress?: number;
+  startTime?: number;
+  endTime?: number;
+  gpuPreviewEnabled?: boolean;
   isActive?: boolean;
 }
 
-export interface TransitionPreset {
-  id: string;
+export interface TransitionParams {
+  direction?: 'left' | 'right' | 'up' | 'down';
+  easing?: 'linear' | 'easeIn' | 'easeOut' | 'easeInOut';
+  intensity?: number;
+  duration?: number;
+  type?: TransitionType;
+}
+
+export interface UniformValue {
+  type: 'float' | 'sampler2D' | 'vec2';
+  value: number | [number, number] | WebGLTexture | null;
+  defaultValue: number | [number, number] | WebGLTexture | null;
   name: string;
-  type: TransitionType;
-  defaultDuration: number;
-  defaultParams?: TransitionParams;
-  thumbnail?: string;
-}
-
-export interface TransitionInstance extends Omit<Transition, 'clipAId' | 'clipBId' | 'startTime' | 'progress' | 'isActive'> {
-  clipAId: string;
-  clipBId: string;
-  startTime: number;
-  progress: number;
-  isActive: boolean;
-}
-
-// Base interface for frame data
-export interface TransitionFrameData {
-  data: Uint8ClampedArray;
-  colorSpace: PredefinedColorSpace;
-  width: number;
-  height: number;
-}
-
-// Extended interface for frames that may have additional properties
-export interface TransitionFrame extends TransitionFrameData {
-  texture?: WebGLTexture;
-  imageData?: ImageData;
-}
-
-export interface TransitionPreviewData {
-  clipA: TransitionFrameData;
-  clipB: TransitionFrameData;
-  fromFrame?: TransitionFrameData;
-  toFrame?: TransitionFrameData;
-  progress: number;
-  clipATexture?: WebGLTexture;
-  clipBTexture?: WebGLTexture;
-  params?: TransitionParams;
-}
-
-export interface TransitionRenderOptions {
-  width: number;
-  height: number;
-  useGPU?: boolean;
-  quality?: 'low' | 'medium' | 'high';
-}
-
-export type UniformValue = number | number[] | Float32Array | WebGLTexture | null;
-
-export type UniformType = 'float' | 'vec2' | 'vec3' | 'vec4' | 'sampler2D' | 'mat4';
-
-export interface UniformDefinition {
-  type: UniformType;
-  value: UniformValue;
-  defaultValue: UniformValue;
-  min?: number;
-  max?: number;
-  description?: string;
-  name: string;
-}
-
-export interface ShaderUniforms {
-  [key: string]: UniformDefinition;
+  min?: number | [number, number];
+  max?: number | [number, number];
+  step?: number;
+  width?: number;
+  height?: number;
+  format?: number;
+  data?: Uint8ClampedArray;
+  colorSpace?: string;
 }
 
 export interface TransitionShader {
   vertexShader: string;
   fragmentShader: string;
-  uniforms: ShaderUniforms;
+  uniforms: {
+    [key: string]: UniformValue;
+  };
 }
+
+export interface TransitionFrameData {
+  data: Uint8ClampedArray;
+  width: number;
+  height: number;
+  colorSpace: PredefinedColorSpace;
+}
+
+export interface TransitionClipData {
+  texture: WebGLTexture;
+  width: number;
+  height: number;
+  data?: Uint8ClampedArray;
+  colorSpace?: PredefinedColorSpace;
+}
+
+export interface TransitionPreviewData {
+  fromFrame?: TransitionFrameData;
+  toFrame?: TransitionFrameData;
+  clipA: TransitionClipData;
+  clipB: TransitionClipData;
+  progress: number;
+  params?: Record<string, any>;
+}
+
+export interface TransitionRenderOptions {
+  width: number;
+  height: number;
+  quality?: 'preview' | 'full';
+  gpuPreviewEnabled?: boolean;
+}
+
+export interface TransitionInstance extends Transition {
+  progress: number;
+  startTime: number;
+  endTime: number;
+  gpuPreviewEnabled: boolean;
+  definition: TransitionDefinition;
+}
+
+export type PredefinedColorSpace = 'srgb' | 'display-p3';
 
 export interface TransitionDefinition {
   name: string;
-  description?: string;
+  type: TransitionType;
   vertexShader: string;
   fragmentShader: string;
-  uniforms: ShaderUniforms;
+  uniforms: {
+    [key: string]: UniformValue;
+  };
   defaultParams?: TransitionParams;
-  shader?: TransitionShader;
-  transitionType?: TransitionType;
-  type?: TransitionType; // For backward compatibility
 }
 
-// Helper function to convert ImageData to TransitionFrame
-export const createTransitionFrame = (imageData: ImageData): TransitionFrame => ({
-  width: imageData.width,
-  height: imageData.height,
-  data: imageData.data,
-  colorSpace: imageData.colorSpace || 'srgb',
-  imageData,
+export const createFloat = (
+  name: string,
+  defaultValue: number = 0,
+  min?: number | undefined,
+  max?: number | undefined,
+  step?: number | undefined
+): UniformValue => ({
+  type: 'float',
+  value: defaultValue,
+  defaultValue,
+  name,
+  min: typeof min === 'number' ? min : undefined,
+  max: typeof max === 'number' ? max : undefined,
+  step: typeof step === 'number' ? step : undefined
 });
 
-// Helper function to create a basic frame data object
-export const createFrameData = (
-  data: Uint8ClampedArray,
-  width: number,
-  height: number,
-  colorSpace: PredefinedColorSpace = 'srgb'
-): TransitionFrameData => ({
-  data,
+export const createSampler2D = (
+  name: string,
+  defaultValue?: WebGLTexture | null,
+  width?: number,
+  height?: number,
+  format?: number
+): UniformValue => ({
+  type: 'sampler2D',
+  value: defaultValue ?? null,
+  defaultValue: defaultValue ?? null,
+  name,
   width,
   height,
-  colorSpace,
+  format
 });
 
-// Helper functions for creating uniform definitions
-export const createFloat = (name: string, value: number, min = 0, max = 1, description?: string): UniformDefinition => ({
-  type: 'float',
-  value,
-  defaultValue: value,
-  min,
-  max,
-  name,
-  description,
-});
+export const createVec2 = (
+  name: string,
+  defaultValue: [number, number] = [0, 0],
+  min?: [number, number] | undefined,
+  max?: [number, number] | undefined
+): UniformValue => {
+  // Ensure defaultValue is a valid number array
+  const validDefaultValue: [number, number] = Array.isArray(defaultValue) && defaultValue.length === 2 && 
+    defaultValue.every(v => typeof v === 'number') ? defaultValue : [0, 0];
 
-export const createVec2 = (name: string, value: [number, number], description?: string): UniformDefinition => ({
-  type: 'vec2',
-  value,
-  defaultValue: value,
-  name,
-  description,
-});
+  // Validate min/max if provided
+  const validMin = Array.isArray(min) && min.length === 2 && min.every(v => typeof v === 'number') ? min : undefined;
+  const validMax = Array.isArray(max) && max.length === 2 && max.every(v => typeof v === 'number') ? max : undefined;
 
-export const createVec3 = (name: string, value: [number, number, number], description?: string): UniformDefinition => ({
-  type: 'vec3',
-  value,
-  defaultValue: value,
-  name,
-  description,
-});
+  return {
+    type: 'vec2',
+    value: validDefaultValue,
+    defaultValue: validDefaultValue,
+    name,
+    min: validMin,
+    max: validMax
+  };
+};
 
-export const createVec4 = (name: string, value: [number, number, number, number], description?: string): UniformDefinition => ({
-  type: 'vec4',
-  value,
-  defaultValue: value,
-  name,
-  description,
-});
-
-export const createSampler2D = (name: string, description?: string): UniformDefinition => ({
-  type: 'sampler2D',
-  value: null,
-  defaultValue: null,
-  name,
-  description,
-});
-
-export const createMat4 = (name: string, value: Float32Array, description?: string): UniformDefinition => ({
-  type: 'mat4',
-  value,
-  defaultValue: value,
-  name,
-  description,
-});
-
-// Helper function to get uniform value
-export const getUniformValue = (uniform: UniformDefinition): UniformValue => uniform.value;
-
-// Helper function to get uniform type
-export const getUniformType = (uniform: UniformDefinition): UniformType => uniform.type;
-
-// Constants for transition types
-export const TRANSITION_TYPES = {
-  [TransitionType.Dissolve]: TransitionType.Dissolve,
-  [TransitionType.Fade]: TransitionType.Fade,
-  [TransitionType.Wipe]: TransitionType.Wipe,
-  [TransitionType.Slide]: TransitionType.Slide,
-  [TransitionType.Crossfade]: TransitionType.Crossfade,
-  [TransitionType.Zoom]: TransitionType.Zoom,
-  [TransitionType.Push]: TransitionType.Push,
+export const getUniformType = (uniform: UniformValue): string => {
+  switch (uniform.type) {
+    case 'float':
+      return '1f';
+    case 'sampler2D':
+      return '1i';
+    case 'vec2':
+      return '2fv';
+    default:
+      throw new Error(`Unknown uniform type: ${uniform.type}`);
+  }
 };

@@ -1,4 +1,4 @@
-import { ipcMain, dialog, BrowserWindow } from 'electron';
+import { ipcMain, dialog, BrowserWindow, IpcMainInvokeEvent, OpenDialogOptions, SaveDialogOptions } from 'electron';
 import { Logger } from '../utils/logger';
 import { LicenseManager } from './LicenseManager';
 
@@ -26,7 +26,7 @@ export function registerLicenseHandlers(): void {
   });
 
   // Dialog handlers
-  ipcMain.handle('dialog:showOpen', async (event, options) => {
+  ipcMain.handle('dialog:showOpen', async (event: IpcMainInvokeEvent, options: OpenDialogOptions) => {
     logger.info('dialog:showOpen handler called', { options });
     const window = BrowserWindow.fromWebContents(event.sender);
     if (!window) {
@@ -35,7 +35,7 @@ export function registerLicenseHandlers(): void {
     return await dialog.showOpenDialog(window, options);
   });
 
-  ipcMain.handle('dialog:showSave', async (event, options) => {
+  ipcMain.handle('dialog:showSave', async (event: IpcMainInvokeEvent, options: SaveDialogOptions) => {
     logger.info('dialog:showSave handler called', { options });
     const window = BrowserWindow.fromWebContents(event.sender);
     if (!window) {

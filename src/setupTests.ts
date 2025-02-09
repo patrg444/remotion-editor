@@ -1,9 +1,5 @@
 import '@testing-library/jest-dom';
 import '@testing-library/jest-dom/extend-expect';
-import { expect as chaiExpect } from 'chai';
-
-// Make Chai's expect available globally
-(global as any).expect = chaiExpect;
 
 // Store original console methods
 const originalConsoleError = console.error;

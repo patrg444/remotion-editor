@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Media Bin Test</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <style>
+    /* Timeline styles */
+    .timeline-wrapper {
+      position: relative;
+      overflow: visible;
+      height: 300px;
+      margin-top: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: #1a1a1a;
+    }
+
+    .timeline-body {
+      position: relative;
+      overflow: visible;
+      width: 100%;
+      height: 100%;
+    }
+
+    .timeline-content {
+      position: relative;
+      overflow: visible;
+      width: 100%;
+      height: 100%;
+      transform-origin: 0 0;
+      min-height: 200px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .timeline-tracks-container {
+      position: relative;
+      overflow: visible;
+      width: 100%;
+      height: 100%;
+      min-height: 200px;
+      display: flex;
+      flex-direction: row;
+    }
+
+    .timeline-tracks-content {
+      position: relative;
+      overflow: visible;
+      flex: 1 1 auto;
+      min-height: 200px;
+      background: repeating-linear-gradient(
+        45deg,
+        rgba(255, 255, 255, 0.02) 0px,
+        rgba(255, 255, 255, 0.02) 10px,
+        transparent 10px,
+        transparent 20px
+      );
+      transform-origin: 0 0;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      width: 100%;
+      height: 100%;
+    }
+
+    .timeline-track {
+      min-height: 60px;
+      overflow: visible;
+      position: relative;
+      background: rgba(255, 255, 255, 0.05);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .track-content {
+      min-height: 60px;
+      overflow: visible;
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .track-clips {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      min-height: 60px;
+      overflow: visible;
+    }
+
+    .timeline-clip {
+      position: absolute;
+      height: 100%;
+      background: rgba(0, 123, 255, 0.2);
+      border: 1px solid rgba(0, 123, 255, 0.5);
+      border-radius: 4px;
+      cursor: grab;
+      user-select: none;
+      touch-action: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .timeline-clip.selected {
+      border-color: #007bff;
+      background: rgba(0, 123, 255, 0.3);
+    }
+
+    .clip-duration {
+      position: absolute;
+      bottom: 2px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.8);
+      white-space: nowrap;
+    }
+
+    /* Media bin styles */
+    .media-bin {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow: hidden;
+    }
+    .media-bin-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+    }
+    .media-bin-items {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 10px;
+    }
+    .media-asset-item {
+      display: flex;
+      flex-direction: column;
+      padding: 10px;
+      border: 1px solid #444;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .media-asset-item.selected {
+      border-color: #007bff;
+      background: rgba(0, 123, 255, 0.1);
+    }
+    .media-asset-placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100px;
+      background: #333;
+      border-radius: 4px;
+      font-size: 24px;
+    }
+  </style>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      height: 100vh;
+      background: #1e1e1e;
+      color: #fff;
+    }
+    #root {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="media-bin-bundle.js"></script>
+  <script>
+    // Initialize test state
+    window.timelineState = {
+      mediaBin: {
+        items: [
+          {
+            id: 'test-1',
+            name: 'test.mp4',
+            type: 'video',
+            path: '/test.mp4',
+            duration: 5,
+            originalDuration: 5,
+            initialDuration: 5,
+            maxDuration: 5
+          },
+          {
+            id: 'test-2',
+            name: 'test2.mp4',
+            path: '/test2.mp4',
+            type: 'video',
+            duration: 10,
+            originalDuration: 10,
+            initialDuration: 10,
+            maxDuration: 10
+          }
+        ],
+        selectedIds: []
+      },
+      tracks: [{
+        id: 'track-1',
+        name: 'Video Track',
+        type: 'video',
+        clips: [],
+        transitions: [],
+        allowTransitions: true,
+        transitionsEnabled: true,
+        showTransitions: true,
+        isLocked: false,
+        isVisible: true,
+        isMuted: false,
+        allowOverlap: false,
+        height: 100,
+        scrollLeft: 0,
+        containerWidth: 900
+      }],
+      currentTime: 0,
+      duration: 10,
+      zoom: 1,
+      fps: 30,
+      isPlaying: false,
+      isDragging: false,
+      scrollX: 0,
+      scrollY: 0,
+      selectedClipIds: [],
+      selectedTrackId: null,
+      dragStartX: 0,
+      dragStartY: 0,
+      error: null,
+      containerWidth: 900,
+      containerHeight: 300,
+      scale: 1,
+      timelineReady: true
+    };
+
+    window.timelineDispatch = function(action) {
+      if (action.type === 'SET_STATE') {
+        window.timelineState = action.payload;
+        window.dispatchEvent(new CustomEvent('timelineStateChange', { detail: window.timelineState }));
+      } else if (action.type === 'ADD_CLIP') {
+        const track = window.timelineState.tracks.find(t => t.id === action.payload.trackId);
+        if (track) {
+          track.clips = track.clips || [];
+          // Ensure clip has layer property
+          const clipWithLayer = {
+            ...action.payload.clip,
+            layer: action.payload.clip.layer || 0
+          };
+          track.clips.push(clipWithLayer);
+          window.timelineState = {
+            ...window.timelineState,
+            tracks: window.timelineState.tracks.map(t => 
+              t.id === track.id ? { ...t, clips: track.clips } : t
+            )
+          };
+
+          // Add clip element to both containers
+          const clipElement = document.createElement('div');
+          clipElement.className = 'timeline-clip';
+          clipElement.setAttribute('data-testid', 'timeline-clip');
+          clipElement.setAttribute('aria-label', clipWithLayer.name);
+          clipElement.style.left = `${clipWithLayer.startTime * window.timelineState.zoom}px`;
+          clipElement.style.width = `${(clipWithLayer.endTime - clipWithLayer.startTime) * window.timelineState.zoom}px`;
+          
+          // Add to track-clips container
+          const trackClipsElement = document.querySelector(`[data-track-id="${track.id}"] .track-clips`);
+          if (trackClipsElement) {
+            trackClipsElement.appendChild(clipElement.cloneNode(true));
+          }
+
+          // Add to React timeline container
+          const timelineTrackElement = document.querySelector(`[data-testid="timeline-track"]`);
+          if (timelineTrackElement) {
+            timelineTrackElement.appendChild(clipElement);
+          }
+          window.dispatchEvent(new CustomEvent('timelineStateChange', { detail: window.timelineState }));
+          
+          // Dispatch clip added event
+          window.dispatchEvent(new CustomEvent('clip:added', {
+            detail: {
+              trackId: track.id,
+              clip: clipWithLayer
+            }
+          }));
+
+          // Force track update
+          window.dispatchEvent(new CustomEvent('track:updated', {
+            detail: {
+              trackId: track.id,
+              updates: { clips: track.clips }
+            }
+          }));
+
+          // Force clip render
+          window.dispatchEvent(new CustomEvent('clip:render', {
+            detail: {
+              clipId: clipWithLayer.id,
+              trackId: track.id,
+              clip: clipWithLayer
+            }
+          }));
+
+          // Force React to re-render
+          window.dispatchEvent(new CustomEvent('timeline:state-changed', {
+            detail: {
+              tracks: window.timelineState.tracks.map(t => ({
+                id: t.id,
+                clipCount: t.clips.length,
+                clips: t.clips.map(c => ({
+                  id: c.id,
+                  startTime: c.startTime,
+                  endTime: c.endTime,
+                  layer: c.layer
+                }))
+              }))
+            }
+          }));
+
+          // Update timeline duration if needed
+          const maxEndTime = Math.max(...track.clips.map(c => c.endTime));
+          if (maxEndTime > window.timelineState.duration) {
+            window.timelineState = {
+              ...window.timelineState,
+              duration: Math.max(maxEndTime, 10)
+            };
+            window.dispatchEvent(new CustomEvent('timelineStateChange', { detail: window.timelineState }));
+          }
+        }
+      }
+    };
+
+    window.logger = {
+      debug: console.log,
+      error: console.error
+    };
+
+    // Initialize React component after bundle loads
+    const checkInterval = setInterval(() => {
+      if (window.MediaBin && window.MediaBin.default) {
+        clearInterval(checkInterval);
+        console.log('Bundle loaded, rendering React component');
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(React.createElement(
+          window.TimelineProvider,
+          { 
+            initialState: window.timelineState,
+            dispatch: window.timelineDispatch
+          },
+          React.createElement(
+            window.MediaBinProvider,
+            { value: window.mediaBinContext },
+            React.createElement('div', { className: 'app-container' }, [
+              React.createElement(window.MediaBin, { key: 'media-bin' }),
+              React.createElement('div', { className: 'timeline-wrapper', key: 'timeline-wrapper' }, [
+                React.createElement('div', { className: 'timeline-body' }, [
+                  React.createElement('div', { className: 'timeline-content' }, [
+                    React.createElement('div', { className: 'timeline-tracks-container' }, [
+                      React.createElement('div', { className: 'timeline-tracks-content' }, [
+                        React.createElement('div', { className: 'timeline-track', 'data-testid': 'timeline-track', 'data-track-id': 'track-1' }, [
+                          React.createElement('div', { className: 'track-content' }, [
+                            React.createElement('div', { className: 'track-clips' }, [])
+                          ])
+                        ])
+                      ])
+                    ]),
+                    React.createElement(window.Timeline, { 
+                      key: 'timeline',
+                      containerWidth: 900,
+                      scrollLeft: 0,
+                      onScroll: () => {},
+                      onTimeUpdate: () => {}
+                    }, [
+                      React.createElement(window.TimelineTracks, {
+                        key: 'tracks',
+                        tracks: window.timelineState.tracks,
+                        selectedTrackId: null,
+                        selectedClipIds: [],
+                        onSelectTrack: (trackId) => {
+                          window.timelineState = {
+                            ...window.timelineState,
+                            selectedTrackId: trackId
+                          };
+                          window.dispatchEvent(new CustomEvent('timelineStateChange', { detail: window.timelineState }));
+                        },
+                        onSelectClip: (clipId) => {
+                          window.timelineState = {
+                            ...window.timelineState,
+                            selectedClipIds: [clipId]
+                          };
+                          window.dispatchEvent(new CustomEvent('timelineStateChange', { detail: window.timelineState }));
+                        },
+                        onClipDragStart: (clipId) => {
+                          window.timelineState = {
+                            ...window.timelineState,
+                            isDragging: true,
+                            selectedClipIds: [clipId]
+                          };
+                          window.dispatchEvent(new CustomEvent('timelineStateChange', { detail: window.timelineState }));
+                        },
+                        onClipDragEnd: () => {
+                          window.timelineState = {
+                            ...window.timelineState,
+                            isDragging: false
+                          };
+                          window.dispatchEvent(new CustomEvent('timelineStateChange', { detail: window.timelineState }));
+                        },
+                        onUpdateTrack: (trackId, updates) => {
+                          const track = window.timelineState.tracks.find(t => t.id === trackId);
+                          if (track) {
+                            window.timelineState = {
+                              ...window.timelineState,
+                              tracks: window.timelineState.tracks.map(t => 
+                                t.id === trackId ? { ...t, ...updates } : t
+                              )
+                            };
+                            window.dispatchEvent(new CustomEvent('timelineStateChange', { detail: window.timelineState }));
+                            window.dispatchEvent(new CustomEvent('track:updated', {
+                              detail: {
+                                trackId,
+                                updates
+                              }
+                            }));
+                          }
+                        },
+                        onDeleteTrack: (trackId) => {
+                          window.timelineState = {
+                            ...window.timelineState,
+                            tracks: window.timelineState.tracks.filter(t => t.id !== trackId)
+                          };
+                          window.dispatchEvent(new CustomEvent('timelineStateChange', { detail: window.timelineState }));
+                        },
+                        onMoveTrack: (trackId, direction) => {
+                          const trackIndex = window.timelineState.tracks.findIndex(t => t.id === trackId);
+                          if (trackIndex === -1) return;
+                          const newTracks = [...window.timelineState.tracks];
+                          const track = newTracks[trackIndex];
+                          if (direction === 'up' && trackIndex > 0) {
+                            newTracks[trackIndex] = newTracks[trackIndex - 1];
+                            newTracks[trackIndex - 1] = track;
+                          } else if (direction === 'down' && trackIndex < newTracks.length - 1) {
+                            newTracks[trackIndex] = newTracks[trackIndex + 1];
+                            newTracks[trackIndex + 1] = track;
+                          }
+                          window.timelineState = {
+                            ...window.timelineState,
+                            tracks: newTracks
+                          };
+                          window.dispatchEvent(new CustomEvent('timelineStateChange', { detail: window.timelineState }));
+                        },
+                        onToggleVisibility: (trackId) => {
+                          const track = window.timelineState.tracks.find(t => t.id === trackId);
+                          if (track) {
+                            track.isVisible = !track.isVisible;
+                            window.timelineState = {
+                              ...window.timelineState,
+                              tracks: [...window.timelineState.tracks]
+                            };
+                            window.dispatchEvent(new CustomEvent('timelineStateChange', { detail: window.timelineState }));
+                          }
+                        },
+                        zoom: window.timelineState.zoom,
+                        fps: window.timelineState.fps,
+                        scrollLeft: 0,
+                        containerWidth: 900,
+                        onScroll: () => {},
+                        onTimeUpdate: () => {}
+                      })
+                    ])
+                  ])
+                ])
+              ])
+            ])
+          )
+        ));
+        
+        // Set initial state after React is mounted
+        setTimeout(() => {
+          console.log('Setting initial state');
+          window.timelineDispatch({
+            type: 'SET_STATE',
+            payload: {
+              mediaBin: {
+                items: [
+                  {
+                    id: 'test-1',
+                    name: 'test.mp4',
+                    type: 'video',
+                    path: '/test.mp4',
+                    duration: 5,
+                    originalDuration: 5,
+                    initialDuration: 5,
+                    maxDuration: 5
+                  },
+                  {
+                    id: 'test-2',
+                    name: 'test2.mp4',
+                    path: '/test2.mp4',
+                    type: 'video',
+                    duration: 10,
+                    originalDuration: 10,
+                    initialDuration: 10,
+                    maxDuration: 10
+                  }
+                ],
+                selectedIds: []
+              },
+              tracks: [{
+                id: 'track-1',
+                name: 'Video Track',
+                type: 'video',
+                clips: [],
+                transitions: [],
+                allowTransitions: true,
+                transitionsEnabled: true,
+                showTransitions: true,
+                isLocked: false,
+                isVisible: true,
+                isMuted: false,
+                allowOverlap: false,
+                height: 100,
+                scrollLeft: 0,
+                containerWidth: 900
+              }],
+              currentTime: 0,
+              duration: 10,
+              zoom: 1,
+              fps: 30,
+              isPlaying: false,
+              isDragging: false,
+              scrollX: 0,
+              scrollY: 0,
+              selectedClipIds: [],
+              selectedTrackId: null,
+              dragStartX: 0,
+              dragStartY: 0,
+              error: null,
+              containerWidth: 900,
+              containerHeight: 300,
+              scale: 1,
+              timelineReady: true
+            }
+          });
+          window.timelineReady = true;
+          console.log('Timeline ready');
+        }, 500);
+      }
+    }, 100);
+  </script>
+</body>
+</html>
